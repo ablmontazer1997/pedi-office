@@ -1,0 +1,131 @@
+[
+ {
+  "asset": "sofa",
+  "x": 291,
+  "y": 718,
+  "z": 1
+ },
+ {
+  "asset": "plant_00",
+  "x": 133,
+  "y": 729,
+  "z": 1
+ },
+ {
+  "asset": "plant_07",
+  "x": 272,
+  "y": 424
+ },
+ {
+  "asset": "plant_01",
+  "x": 82,
+  "y": 491
+ },
+ {
+  "asset": "desk",
+  "x": 173,
+  "y": 602
+ },
+ {
+  "asset": "desk",
+  "x": 626,
+  "y": 433,
+  "seat": [
+   [
+    "rade",
+    "r1_00"
+   ]
+  ]
+ },
+ {
+  "asset": "desk",
+  "x": 795,
+  "y": 513
+ },
+ {
+  "asset": "desk",
+  "x": 763,
+  "y": 692
+ },
+ {
+  "asset": "desk",
+  "x": 416,
+  "y": 524
+ },
+ {
+  "asset": "image_25",
+  "x": 403,
+  "y": 774,
+  "z": -1
+ },
+ {
+  "asset": "image_26",
+  "x": 571,
+  "y": 272
+ },
+ {
+  "asset": "image_29",
+  "x": 403,
+  "y": 754
+ },
+ {
+  "asset": "image_28",
+  "x": 125,
+  "y": 382
+ },
+ {
+  "asset": "image_30",
+  "x": 803,
+  "y": 282
+ },
+ {
+  "asset": "image_32",
+  "x": 978,
+  "y": 316
+ },
+ {
+  "asset": "case",
+  "x": 1036,
+  "y": 389
+ },
+ {
+  "asset": "desk",
+  "x": 588,
+  "y": 604
+ },
+ {
+  "asset": "coffee-frame",
+  "x": 774,
+  "y": 147
+ },
+ {
+  "asset": "plant_04",
+  "x": 435,
+  "y": 337
+ },
+ {
+  "asset": "drinking-fountaion",
+  "x": 67,
+  "y": 704
+ },
+ {
+  "asset": "book-desk",
+  "x": 977,
+  "y": 780
+ },
+ {
+  "asset": "long-vase",
+  "x": 546,
+  "y": 686
+ },
+ {
+  "asset": "single-couch",
+  "x": 1110,
+  "y": 712
+ },
+ {
+  "asset": "desk",
+  "x": 971,
+  "y": 607
+ }
+]

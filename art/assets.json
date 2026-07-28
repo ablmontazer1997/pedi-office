@@ -1,0 +1,141 @@
+{
+ "bed": {
+  "edges": [
+   -0.508,
+   0.492
+  ],
+  "width": 186
+ },
+ "book-desk": {
+  "edges": [
+   -0.484,
+   0.536
+  ],
+  "width": 160
+ },
+ "case": {
+  "edges": [
+   -0.44,
+   0.352
+  ],
+  "width": 217
+ },
+ "coffee-frame": {
+  "edges": null,
+  "width": 46
+ },
+ "desk": {
+  "edges": [
+   -0.376,
+   0.452
+  ],
+  "width": 185
+ },
+ "drinking-fountaion": {
+  "edges": null,
+  "width": 63
+ },
+ "frame": {
+  "edges": null,
+  "width": 63
+ },
+ "image_25": {
+  "edges": [
+   -0.468,
+   0.508
+  ],
+  "width": 320
+ },
+ "image_26": {
+  "edges": [
+   -0.3,
+   0.664
+  ],
+  "width": 257
+ },
+ "image_28": {
+  "edges": [
+   -0.336,
+   0.32
+  ],
+  "width": 102
+ },
+ "image_29": {
+  "edges": [
+   -0.468,
+   0.528
+  ],
+  "width": 199
+ },
+ "image_30": {
+  "edges": [
+   -0.548,
+   0.392
+  ],
+  "width": 211
+ },
+ "image_32": {
+  "edges": null,
+  "width": 67
+ },
+ "long-vase": {
+  "edges": [
+   -0.62,
+   0.528
+  ],
+  "width": 160
+ },
+ "plant_00": {
+  "edges": null,
+  "width": 62
+ },
+ "plant_01": {
+  "edges": null,
+  "width": 55
+ },
+ "plant_02": {
+  "edges": null,
+  "width": 40
+ },
+ "plant_03": {
+  "edges": null,
+  "width": 34
+ },
+ "plant_04": {
+  "edges": null,
+  "width": 42
+ },
+ "plant_05": {
+  "edges": null,
+  "width": 78
+ },
+ "plant_06": {
+  "edges": null,
+  "width": 148
+ },
+ "plant_07": {
+  "edges": [
+   -0.468,
+   0.392
+  ],
+  "width": 100
+ },
+ "plant_08": {
+  "edges": null,
+  "width": 56
+ },
+ "single-couch": {
+  "edges": [
+   -0.496,
+   0.408
+  ],
+  "width": 159
+ },
+ "sofa": {
+  "edges": [
+   -0.4,
+   0.572
+  ],
+  "width": 300
+ }
+}

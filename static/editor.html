@@ -1,0 +1,262 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RADE OFFICE — layout editor</title>
+<style>
+:root{--bg:#0a0810;--panel:#15111f;--line:#2f2646;--ink:#ece5f7;--dim:#8f82ab;--violet:#b57bff;--ok:#5ef08a;--err:#ff5f6b}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font:13px ui-monospace,Menlo,Consolas,monospace;overflow:hidden}
+body{display:grid;grid-template-columns:1fr 250px}
+#stage{position:relative;overflow:hidden;background:#0b0913}
+#cv{position:absolute;left:0;top:0;image-rendering:pixelated;cursor:crosshair}
+aside{background:var(--panel);border-left:2px solid var(--line);display:flex;flex-direction:column;min-height:0}
+h2{font-size:12px;letter-spacing:2px;color:var(--violet);padding:11px 13px;border-bottom:1px solid var(--line)}
+#pal{flex:1;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:9px}
+.card{border:2px solid var(--line);border-radius:6px;background:#1c1629;padding:5px;text-align:center;cursor:pointer}
+.card.on{border-color:var(--violet)}
+.card img{width:100%;height:56px;object-fit:contain;image-rendering:pixelated;display:block}
+.card b{display:block;font-size:9px;color:var(--dim);font-weight:400;margin-top:3px;overflow:hidden;text-overflow:ellipsis}
+#tools{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.row{display:flex;gap:7px;align-items:center}
+.row label{color:var(--dim);width:52px;font-size:11px}
+input[type=range]{flex:1}
+button{font:inherit;font-size:11px;letter-spacing:1px;color:var(--ink);background:#221836;border:2px solid #5a3b86;
+  border-radius:5px;padding:8px 6px;cursor:pointer;flex:1}
+button:hover{filter:brightness(1.4)}
+button.go{border-color:#2f7a45;background:#12301d}
+#drop{border:2px dashed var(--line);border-radius:6px;padding:10px;text-align:center;color:var(--dim);font-size:11px}
+#drop.hot{border-color:var(--violet);color:var(--ink)}
+#msg{padding:7px 12px;font-size:11px;color:var(--dim);border-top:1px solid var(--line);min-height:30px}
+#hint{position:absolute;left:10px;top:10px;background:rgba(12,9,20,.85);border:1px solid var(--line);
+  border-radius:5px;padding:7px 10px;font-size:11px;color:var(--dim);line-height:1.7;pointer-events:none}
+/* the baked room, shown right here so there is no second page to go and find */
+#peek{position:absolute;inset:0;background:rgba(6,4,12,.96);display:none;place-items:center;
+  flex-direction:column;gap:10px;padding:16px;z-index:5;cursor:zoom-out}
+#peek.on{display:flex}
+#peek img{max-width:100%;max-height:calc(100% - 34px);image-rendering:pixelated;border:1px solid var(--line)}
+#peek div{font-size:11px;color:var(--dim)}
+#peek a{color:var(--violet)}
+</style></head><body>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="hint">
+    click a piece on the right, then click the floor to drop it<br>
+    drag to move · wheel to resize · <b>F</b> flip · <b>Del</b> remove · <b>Esc</b> deselect<br>
+    <b>]</b> / <b>[</b> layer up · down, to put a piece over or under another
+  </div>
+  <div id="peek"><img id="peekimg" alt="baked room"><div id="peekmsg"></div></div>
+</div>
+
+<aside>
+  <h2>ASSETS</h2>
+  <div id="pal"></div>
+  <div id="tools">
+    <div id="drop">drop a PNG here to add it</div>
+    <div class="row"><label>size</label><input id="size" type="range" min="20" max="600" value="160"></div>
+    <div class="row"><label>skew</label><button id="fit" style="flex:1">snap to grid · on/off</button></div>
+    <div class="row"><label>layer</label><button id="up">↑ front</button><button id="down">↓ back</button></div>
+    <div class="row"><button id="save" class="go">SAVE</button><button id="bake">BAKE</button></div>
+  </div>
+  <div id="msg"></div>
+</aside>
+
+<script>
+const $ = id => document.getElementById(id);
+const cv = $("cv"), cx = cv.getContext("2d"), stage = $("stage");
+const K = new URLSearchParams(location.search).get("k") || "";
+const q = p => p + (p.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(K);
+
+let META = null, SCALE = 1, LIB = [], IMG = {}, LAYOUT = [], pick = null, sel = -1, drag = null;
+
+function msg(t, bad){ $("msg").textContent = t; $("msg").style.color = bad ? "var(--err)" : "var(--dim)"; }
+
+async function boot(){
+  META = await (await fetch("office/room_meta.json?v=" + Date.now())).json();
+  IMG.bg = await img("office/room_bg.png?v=" + Date.now());
+  LIB = await (await fetch(q("api/assets"))).json();
+  LAYOUT = await (await fetch(q("api/layout"))).json();
+  await Promise.all(LIB.map(async a => { IMG[a.name] = await img("office/assets/" + a.name + ".png?v=" + Date.now()); }));
+  palette(); fit(); draw();
+}
+const img = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; });
+
+function palette(){
+  $("pal").innerHTML = LIB.map(a =>
+    `<div class="card" data-n="${a.name}"><img src="office/assets/${a.name}.png"><b>${a.name}</b></div>`).join("");
+  $("pal").querySelectorAll(".card").forEach(c => c.onclick = () => {
+    pick = c.dataset.n; sel = -1;
+    $("pal").querySelectorAll(".card").forEach(o => o.classList.toggle("on", o === c));
+    const a = LIB.find(x => x.name === pick); $("size").value = a.width;
+    msg("click the floor to place " + pick);
+  });
+}
+
+function fit(){
+  SCALE = Math.min(stage.clientWidth / META.w, stage.clientHeight / META.h);
+  cv.width = META.w; cv.height = META.h;
+  cv.style.width = (META.w * SCALE) + "px"; cv.style.height = (META.h * SCALE) + "px";
+  cv.style.left = ((stage.clientWidth - META.w * SCALE) / 2) + "px";
+  cv.style.top = ((stage.clientHeight - META.h * SCALE) / 2) + "px";
+}
+addEventListener("resize", () => { fit(); draw(); });
+
+// Back to front. Depth on a floor is how far down the piece stands, so y decides
+// it; layer is the override for pieces sharing a spot — a rug under a sofa.
+const order = () => LAYOUT.map((it, i) => ({it, i}))
+  .sort((a, b) => (a.it.z || 0) - (b.it.z || 0) || a.it.y - b.it.y || a.i - b.i);
+
+function draw(){
+  cx.imageSmoothingEnabled = false;
+  cx.clearRect(0, 0, META.w, META.h);
+  cx.drawImage(IMG.bg, 0, 0);
+  order().forEach(({it, i}) => {
+    const sp = IMG[it.asset]; if (!sp) return;
+    const x = Math.round(it.x - sp.width / 2), y = Math.round(it.y - sp.height);
+    if (it.flip){ cx.save(); cx.translate(x + sp.width, y); cx.scale(-1, 1); cx.drawImage(sp, 0, 0); cx.restore(); }
+    else cx.drawImage(sp, x, y);
+    if (i === sel){
+      cx.strokeStyle = "#b57bff"; cx.lineWidth = 2;
+      cx.strokeRect(x - 1, y - 1, sp.width + 2, sp.height + 2);
+      cx.fillStyle = "#b57bff"; cx.fillRect(it.x - 3, it.y - 3, 6, 6);   // its spot on the floor
+    }
+  });
+}
+
+const at = e => {
+  const r = cv.getBoundingClientRect();
+  return {x: (e.clientX - r.left) / SCALE, y: (e.clientY - r.top) / SCALE};
+};
+
+function hit(p){
+  for (const {it, i} of order().reverse()){
+    const sp = IMG[it.asset]; if (!sp) continue;
+    const x = it.x - sp.width / 2, y = it.y - sp.height;
+    if (p.x >= x && p.x <= x + sp.width && p.y >= y && p.y <= y + sp.height){
+      // ignore the transparent part so pieces behind stay reachable
+      const c = document.createElement("canvas"); c.width = c.height = 1;
+      const g = c.getContext("2d");
+      g.drawImage(sp, Math.round(p.x - x), Math.round(p.y - y), 1, 1, 0, 0, 1, 1);
+      if (g.getImageData(0, 0, 1, 1).data[3] > 20) return i;
+    }
+  }
+  return -1;
+}
+
+cv.onmousedown = e => {
+  const p = at(e);
+  if (pick){
+    LAYOUT.push({asset: pick, x: Math.round(p.x), y: Math.round(p.y)});
+    sel = LAYOUT.length - 1; pick = null;
+    $("pal").querySelectorAll(".card").forEach(o => o.classList.remove("on"));
+    draw(); return;
+  }
+  sel = hit(p);
+  if (sel >= 0){
+    drag = {dx: LAYOUT[sel].x - p.x, dy: LAYOUT[sel].y - p.y};
+    $("size").value = LIB.find(a => a.name === LAYOUT[sel].asset).width;
+  }
+  draw();
+};
+addEventListener("mousemove", e => {
+  if (drag == null || sel < 0) return;
+  const p = at(e);
+  LAYOUT[sel].x = Math.round(p.x + drag.dx);
+  LAYOUT[sel].y = Math.round(p.y + drag.dy);
+  draw();
+});
+addEventListener("mouseup", () => { drag = null; });
+
+cv.onwheel = e => {
+  if (sel < 0) return;
+  e.preventDefault();
+  const a = LIB.find(x => x.name === LAYOUT[sel].asset);
+  resize(a, Math.max(20, Math.min(600, Math.round(a.width * (e.deltaY < 0 ? 1.06 : 0.94)))));
+};
+$("size").oninput = e => {
+  if (sel < 0) return;
+  resize(LIB.find(x => x.name === LAYOUT[sel].asset), +e.target.value);
+};
+
+let pend = null;
+function resize(a, w){
+  a.width = w; $("size").value = w;
+  clearTimeout(pend);
+  pend = setTimeout(async () => {
+    await post("api/asset-size", {name: a.name, width: w});
+    IMG[a.name] = await img("office/assets/" + a.name + ".png?v=" + Date.now());
+    draw();
+  }, 160);
+}
+
+function layer(d){
+  if (sel < 0) return msg("select a piece first", true);
+  LAYOUT[sel].z = (LAYOUT[sel].z || 0) + d;
+  msg(LAYOUT[sel].asset + " · layer " + LAYOUT[sel].z);
+  draw();
+}
+$("up").onclick = () => layer(1);
+$("down").onclick = () => layer(-1);
+
+addEventListener("keydown", e => {
+  if (e.key === "Escape"){ pick = null; sel = -1; $("pal").querySelectorAll(".card").forEach(o => o.classList.remove("on")); draw(); }
+  if (sel < 0) return;
+  if (e.key === "Delete" || e.key === "Backspace"){ LAYOUT.splice(sel, 1); sel = -1; draw(); }
+  if (e.key === "f" || e.key === "F"){ LAYOUT[sel].flip = !LAYOUT[sel].flip; draw(); }
+  if (e.key === "PageUp" || e.key === "]"){ e.preventDefault(); layer(1); }
+  if (e.key === "PageDown" || e.key === "["){ e.preventDefault(); layer(-1); }
+  const step = e.shiftKey ? 10 : 1;
+  if (e.key === "ArrowLeft"){ LAYOUT[sel].x -= step; draw(); }
+  if (e.key === "ArrowRight"){ LAYOUT[sel].x += step; draw(); }
+  if (e.key === "ArrowUp"){ LAYOUT[sel].y -= step; draw(); }
+  if (e.key === "ArrowDown"){ LAYOUT[sel].y += step; draw(); }
+});
+
+async function post(path, body){
+  const r = await fetch(q(path), {method: "POST", headers: {"content-type": "application/json"},
+                                  body: JSON.stringify(body)});
+  const d = await r.json();
+  if (!d.ok) msg(d.msg || "failed", true);
+  return d;
+}
+
+$("save").onclick = async () => { await post("api/layout", LAYOUT); msg("layout saved"); };
+$("bake").onclick = async () => {
+  msg("baking…");
+  // send the layout with it: baking what is on screen beats baking whatever was
+  // last saved, which is what made a bake look like it did nothing
+  const d = await post("api/bake", {layout: LAYOUT});
+  if (!d.ok) return;
+  msg("baked " + (d.at || ""));
+  $("peekimg").src = "office/room_base.png?v=" + Date.now();
+  $("peekmsg").innerHTML = "baked " + (d.at || "") +
+    " · click to close · <a href='room.html?k=" + encodeURIComponent(K) + "' target='_blank'>open the room page</a>";
+  $("peek").classList.add("on");
+};
+$("peek").onclick = e => { if (e.target.tagName !== "A") $("peek").classList.remove("on"); };
+$("fit").onclick = async () => {
+  if (sel < 0) return msg("select a piece first", true);
+  const n = LAYOUT[sel].asset;
+  const d = await post("api/asset-fit", {name: n});
+  if (d.ok){ IMG[n] = await img("office/assets/" + n + ".png?v=" + Date.now()); draw();
+             msg(d.edges ? "snapped · slopes " + d.edges.map(v => v.toFixed(2)).join(" / ")
+                         : "left as drawn"); }
+};
+
+const drop = $("drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("hot"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("hot"); }));
+drop.addEventListener("drop", async e => {
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  msg("adding " + f.name + "…");
+  const b64 = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result.split(",")[1]); fr.readAsDataURL(f); });
+  const name = f.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const d = await post("api/asset", {name, png: b64});
+  if (!d.ok) return;
+  LIB = await (await fetch(q("api/assets"))).json();
+  IMG[name] = await img("office/assets/" + name + ".png?v=" + Date.now());
+  palette(); msg("added " + name + " · click it, then click the floor");
+});
+
+boot();
+</script>
+</body></html>

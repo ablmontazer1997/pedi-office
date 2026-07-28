@@ -1,0 +1,993 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RADE OFFICE — WORLD</title>
+<style>
+@font-face{font-family:"BoldPixels";src:url("font/boldpixels.woff2") format("woff2"),
+  url("font/boldpixels.woff") format("woff");font-display:swap}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:#0b0913;color:#f2ead9;overflow:hidden;
+  font-family:"BoldPixels","Courier New",monospace;letter-spacing:.5px}
+canvas{display:block;width:100%;height:100%;image-rendering:pixelated;
+  image-rendering:crisp-edges}
+.ui{position:fixed;z-index:5}
+.panel{border-style:solid;border-width:26px;
+  border-image:url("limezu/ui/panel.png") 34 fill stretch;
+  image-rendering:pixelated;color:#4a3524}
+.frame{border-style:solid;border-width:24px;
+  border-image:url("limezu/ui/frame.png") 24 fill stretch;
+  image-rendering:pixelated;color:#4a3524}
+
+#top{top:10px;left:50%;transform:translateX(-50%);display:flex;gap:22px;
+  align-items:center;padding:0 6px;font-size:13px;white-space:nowrap}
+#top b{color:#7a4a1e}
+#top .v{color:#2f2417}
+#badge{color:#9a2f1e}
+
+#rail{top:84px;left:10px;width:224px;max-height:calc(100vh - 200px);
+  overflow:auto;padding:2px 0}
+#rail h3{margin:0 0 8px;font-size:12px;color:#7a4a1e;letter-spacing:2px}
+.rm{display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;
+  cursor:pointer;border:2px solid transparent;color:#4a3524}
+.rm:hover{border-color:#b07a3c;background:#00000012}
+.rm.on{border-color:#8a5a24;background:#00000018}
+.rm .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rm i{width:7px;height:7px;border-radius:50%;display:inline-block;
+  box-shadow:0 0 0 1px #00000055}
+
+#modal{position:fixed;inset:0;z-index:20;display:none;
+  background:#0b0913c9;align-items:center;justify-content:center}
+#modal.on{display:flex}
+#card{width:min(680px,94vw);font-size:13px;color:#4a3524}
+#card .hd{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+#card .hd .who{flex:1}
+#card .hd h2{margin:0;font-size:19px;color:#3a2a18;letter-spacing:1px}
+#card .hd .sub{font-size:12px;color:#7a5a3a;
+  font-family:Tahoma,"DejaVu Sans",sans-serif;letter-spacing:normal}
+#card .x{cursor:pointer;font-size:18px;color:#9a2f1e;padding:0 6px}
+#pf{width:58px;height:116px;image-rendering:pixelated;
+  background:#00000018;border:2px solid #00000030}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 16px;margin:10px 0}
+.kv{display:flex;justify-content:space-between;border-bottom:1px dashed #00000030;
+  padding:3px 0}
+.kv span:last-child{color:#2f2417;font-family:Tahoma,"DejaVu Sans",sans-serif;
+  letter-spacing:normal;direction:rtl}
+.meter{height:28px;margin:2px 0 10px;border-style:solid;border-width:10px;
+  border-image:url("limezu/ui/pill.png") 10 fill stretch;image-rendering:pixelated}
+.trk{position:relative;height:100%;background:#00000026}
+.trk i{position:absolute;left:0;top:0;bottom:0;display:block;
+  background:#c8842c;box-shadow:inset 0 2px 0 #e8ac5c}
+#sess{background:#100d16;color:#b9f6c9;font-size:11px;line-height:1.45;
+  padding:8px 10px;max-height:190px;overflow:auto;white-space:pre;
+  font-family:"Courier New",monospace;letter-spacing:0}
+#acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+button{font:inherit;font-size:12px;cursor:pointer;color:#4a3524;
+  border-style:solid;border-width:13px;padding:6px 12px;min-width:120px;
+  border-image:url("limezu/ui/frame2.png") 13 fill stretch;
+  image-rendering:pixelated;background:none}
+button:hover{filter:brightness(1.1)}
+button:disabled{opacity:.45;cursor:not-allowed}
+
+#logs{right:10px;bottom:10px;width:330px;max-height:38vh;overflow:auto;font-size:11px}
+#logs .ln{display:flex;gap:6px;padding:1px 0;border-bottom:1px dashed #00000022}
+#logs .t{color:#8a6a4a}
+#logs .w{color:#7a4a1e;min-width:62px}
+.lv-err{color:#9a2f1e}.lv-warn{color:#8a5a10}.lv-ok{color:#2f6a2f}.lv-info{color:#4a3524}
+
+#mini{left:10px;bottom:10px;padding:2px}
+#mmc{display:block;image-rendering:pixelated;cursor:pointer;width:230px;height:auto}
+
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:30;
+  font-size:12px;display:none;padding:0 4px}
+@media (max-width:900px){#rail,#logs{display:none}}
+</style>
+
+<canvas id="cv"></canvas>
+
+<div class="ui panel" id="top">
+  <span><b>RADE</b> OFFICE</span>
+  <span>BOTS <span class="v" id="tBots">–</span></span>
+  <span>CPU <span class="v" id="tCpu">–</span></span>
+  <span>RAM <span class="v" id="tRam">–</span></span>
+  <span id="tClock" class="v"></span>
+  <span id="bSound" class="v" style="cursor:pointer" title="صدای اتاق موسیقی">♪ OFF</span>
+  <span id="badge"></span>
+</div>
+
+<div class="ui frame" id="rail"><h3>LOCATIONS</h3><div id="rlist"></div></div>
+<div class="ui frame" id="mini"><canvas id="mmc"></canvas></div>
+<div class="ui frame" id="logs"><div id="llist"></div></div>
+
+<div id="modal"><div class="panel" id="card">
+  <div class="hd">
+    <canvas id="pf" width="32" height="64"></canvas>
+    <div class="who"><h2 id="cName">—</h2><div class="sub" id="cSub"></div></div>
+    <div class="x" onclick="closeCard()">✕</div>
+  </div>
+  <div class="grid">
+    <div class="kv"><span>STATE</span><span id="cState">—</span></div>
+    <div class="kv"><span>MODEL</span><span id="cModel">—</span></div>
+    <div class="kv"><span>WHERE</span><span id="cWhere">—</span></div>
+    <div class="kv"><span>DOING</span><span id="cAct">—</span></div>
+  </div>
+  <div style="font-size:11px;color:#7a5a3a">CONTEXT <span id="cCtxT"></span></div>
+  <div class="meter"><div class="trk"><i id="cCtx" style="width:0"></i></div></div>
+  <div id="sessWrap">
+    <div style="font-size:11px;color:#7a5a3a;margin-bottom:4px">LIVE SESSION</div>
+    <div id="sess"></div>
+  </div>
+  <div id="acts">
+    <button id="bRestart">RESTART</button>
+    <button id="bStop">STOP</button>
+    <button id="bFocus">FOLLOW</button>
+  </div>
+</div></div>
+
+<div class="ui panel" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+const KEY = new URLSearchParams(location.search).get("k") || "";
+const cv = document.getElementById("cv"), g = cv.getContext("2d");
+const IMG = {};
+const ROOMDIR = "limezu/rooms/", CHDIR = "limezu/chars/", ANDIR = "limezu/anim/";
+
+/* ------------------------------------------------------------- animation */
+// dir codes everywhere: 0=right 1=up 2=left 3=down
+const ACT = {
+  idle : {row:1,  per:6,  dirs:4, fps:5},
+  walk : {row:2,  per:6,  dirs:4, fps:9},
+  sleep: {row:3,  per:6,  dirs:1, fps:2},
+  sit  : {row:4,  per:6,  dirs:2, fps:3},
+  phone: {row:7,  per:6,  dirs:4, fps:6},
+  lift : {row:11, per:14, dirs:4, fps:9},
+  punch: {row:14, per:6,  dirs:4, fps:9},
+  gun  : {row:17, per:6,  dirs:4, fps:5},
+};
+
+// frame sizes measured from the sheets, not guessed: a wrong frame width is
+// what made the cat flicker through its own blank gutters
+const ANIM = {
+  server :{f:"control_room_server.png",  w:32,h:96, n:3,  fps:5},
+  tapis  :{f:"tapis_roulant.png",        w:64,h:96, n:12, fps:11},
+  coffee :{f:"coffee.png",               w:32,h:64, n:6,  fps:6},
+  cat    :{f:"cat.png",                  w:96,h:32, n:12, fps:8},
+  sprout :{f:"sprout.png",               w:32,h:64, n:4,  fps:3},
+  clock  :{f:"pendulum_clock.png",       w:32,h:96, n:4,  fps:4},
+  seccam :{f:"security_camera_left.png", w:32,h:32, n:10, fps:6},
+};
+const DOOR = {w:32, h:64, n:5};
+
+/* -------------------------------------------------------------- the plan */
+const PAD = 64;
+const ROOMS = [
+{ id:"office", nm:"CONTROL ROOM", fa:"اتاق فرمان", w:640, h:448, x:64, y:64, door:320,
+  L:["Control_Room_layer_1.png","Control_Room_layer_2.png"],
+  anim:[["server",596,300]],
+  spots:[{x:200,y:330,a:"idle",d:1,l:"نگاه به مانیتورها"},
+         {x:430,y:330,a:"phone",d:3,l:"چک کردن گوشی"}] },
+
+{ id:"gym", nm:"GYM", fa:"باشگاه", w:608, h:480, x:768, y:64, door:330,
+  L:["Gym_layer_1_32x32.png","Gym_layer_2_32x32.png"],
+  anim:[["tapis",352,182],["tapis",360,282]],
+  spots:[{x:482,y:140,a:"punch",d:1,l:"کیسه بوکس"},
+         {x:498,y:140,a:"punch",d:1,l:"کیسه بوکس"},
+         {x:503,y:164,a:"punch",d:1,l:"کیسه بوکس"},
+         {x:330,y:230,a:"idle",d:3,l:"دمبل سبک",p:"dumbbell"},
+         {x:384,y:250,a:"walk",d:1,l:"دویدن روی تردمیل",on:true,run:true},
+         {x:392,y:350,a:"walk",d:1,l:"دویدن روی تردمیل",on:true,run:true}] },
+
+{ id:"music", nm:"MUSIC ROOM", fa:"اتاق موسیقی", w:640, h:448, x:0, y:0, door:320,
+  L:["Music_Room_layer_1.png","Music_Room_layer_2.png"],
+  anim:[["sprout",600,300]],
+  spots:[{x:113,y:300,a:"idle",d:1,l:"پیانو زدن",snd:"piano"},
+         {x:225,y:132,a:"idle",d:1,l:"پیانو زدن",snd:"piano"},
+         {x:295,y:132,a:"idle",d:1,l:"پیانو زدن",snd:"piano"},
+         {x:428,y:132,a:"idle",d:1,l:"درام زدن",snd:"drum"},
+         {x:520,y:132,a:"idle",d:1,l:"درام زدن",snd:"drum"},
+         {x:322,y:290,a:"idle",d:1,l:"چنگ زدن",snd:"harp"},
+         {x:433,y:284,a:"idle",d:1,l:"گیتار زدن",snd:"guitar"},
+         {x:503,y:284,a:"idle",d:1,l:"گیتار باس",snd:"guitar"},
+         {x:170,y:392,a:"idle",d:1,l:"تنبک زدن",snd:"conga"},
+         {x:350,y:390,a:"idle",d:1,l:"پای میکروفن",snd:"sing"},
+         {x:469,y:400,a:"idle",d:1,l:"کیبورد زدن",snd:"keys"},
+         {x:533,y:400,a:"idle",d:1,l:"کیبورد زدن",snd:"keys"}] },
+
+{ id:"studio", nm:"TV STUDIO", fa:"استودیو", w:352, h:320, x:64, y:672, door:176,
+  L:["Tv_Studio_Design_layer_1_32x32.png","Tv_Studio_Design_layer_2_32x32.png",
+     "Tv_Studio_Design_layer_3_32x32.png"],
+  anim:[],
+  spots:[{x:131,y:164,a:"idle",d:1,l:"پشت میز پخش"},
+         {x:228,y:100,a:"idle",d:1,l:"پشت میز پخش"},
+         {x:112,y:216,a:"sit",d:1,l:"روی صندلی مهمان",on:true},
+         {x:175,y:216,a:"sit",d:1,l:"روی صندلی مهمان",on:true},
+         {x:80,y:262,a:"idle",d:1,l:"پشت دوربین"}] },
+
+{ id:"cafe", nm:"ICE CREAM SHOP", fa:"بستنی فروشی", w:384, h:320, x:480, y:672, door:192,
+  L:["Ice_Cream_Shop_Design_layer_1_32x32.png","Ice_Cream_Shop_Design_layer_2_32x32.png",
+     "Ice_Cream_Shop_Design_layer_3_32x32.png"],
+  anim:[["coffee",44,172],["coffee",324,172]],
+  spots:[{x:52,y:214,a:"sit",d:0,l:"بستنی خوردن",on:true,p:"icecream"},
+         {x:110,y:214,a:"sit",d:1,l:"بستنی خوردن",on:true,p:"icecream"},
+         {x:274,y:214,a:"sit",d:0,l:"بستنی خوردن",on:true,p:"icecream"},
+         {x:350,y:258,a:"idle",d:1,l:"بستنی خوردن",p:"icecream"},
+         {x:160,y:176,a:"idle",d:1,l:"سفارش دادن"},
+         {x:206,y:176,a:"idle",d:1,l:"صف صندوق"}] },
+
+{ id:"home", nm:"LOUNGE", fa:"لانژ", w:448, h:428, x:928, y:672, door:200,
+  L:["Generic_Home_1_Layer_1_32x32.png","Generic_Home_1_Layer_2_32x32.png"],
+  anim:[["cat",188,170],["sprout",64,208]],
+  spots:[{x:120,y:196,a:"sit",d:0,l:"نشستن کنار میز",on:true},
+         {x:186,y:196,a:"sit",d:1,l:"نشستن کنار میز",on:true},
+         {x:236,y:150,a:"phone",d:3,l:"وقت تلف کردن"},
+         {x:96,y:130,a:"idle",d:1,l:"آشپزخانه"},
+         {x:290,y:190,a:"sleep",d:0,l:"چرت",on:true}] },
+
+{ id:"jp", nm:"JAPANESE HOUSE", fa:"خانه ژاپنی", w:608, h:428, x:1440, y:672, door:176,
+  L:["Japanese_Home_1_Layer_1_32x32.png","Japanese_Home_1_Layer_2_32x32.png"],
+  anim:[["sprout",154,224],["cat",320,268]],
+  spots:[{x:96,y:250,a:"sit",d:0,l:"چای ژاپنی",on:true},
+         {x:150,y:250,a:"sit",d:1,l:"چای ژاپنی",on:true},
+         {x:216,y:194,a:"idle",d:1,l:"تماشای حیاط"},
+         {x:400,y:262,a:"phone",d:3,l:"مطالعه"},
+         {x:470,y:180,a:"sleep",d:0,l:"استراحت",on:true}] },
+
+{ id:"range", nm:"SHOOTING RANGE", fa:"سالن تیراندازی", w:320, h:332, x:64, y:1168, door:150,
+  L:["Shooting_Range_Design_layer_1_32x32.png","Shooting_Range_Design_layer_2_32x32.png"],
+  anim:[["seccam",44,28]],
+  spots:[{x:72,y:212,a:"gun",d:1,l:"تمرین نشانه‌گیری"},
+         {x:118,y:212,a:"gun",d:1,l:"تمرین نشانه‌گیری"},
+         {x:164,y:212,a:"gun",d:1,l:"تمرین نشانه‌گیری"},
+         {x:210,y:250,a:"idle",d:1,l:"انتظار نوبت"}] },
+
+{ id:"lobby", nm:"LOBBY", fa:"لابی", w:448, h:352, x:448, y:1168, door:224,
+  L:["Condominium_Design_layer_1_32x32.png","Condominium_Design_layer_2_32x32.png"],
+  anim:[["clock",64,160],["sprout",380,180]],
+  spots:[{x:186,y:186,a:"idle",d:1,l:"خواندن تابلو اعلانات"},
+         {x:120,y:262,a:"phone",d:3,l:"منتظر آسانسور"},
+         {x:320,y:262,a:"idle",d:3,l:"قدم زدن"}] },
+
+{ id:"game", nm:"GAME ROOM", fa:"اتاق بازی", w:512, h:608, x:0, y:0, door:240,
+  L:["Game_Room_layer_1.png","Game_Room_layer_2.png"],
+  anim:[["seccam",470,20]],
+  spots:[{x:66,y:142,a:"idle",d:1,l:"بازی آرکید"},
+         {x:138,y:142,a:"idle",d:1,l:"بازی آرکید"},
+         {x:210,y:142,a:"idle",d:1,l:"رکورد زدن"},
+         {x:352,y:216,a:"idle",d:1,l:"تماشای تلویزیون",on:true},
+         {x:416,y:216,a:"idle",d:1,l:"تماشای تلویزیون",on:true},
+         {x:67,y:334,a:"idle",d:1,l:"پای بار",on:true},
+         {x:117,y:334,a:"idle",d:1,l:"پای بار",on:true},
+         {x:167,y:334,a:"idle",d:1,l:"پای بار",on:true},
+         {x:88,y:486,a:"idle",d:1,l:"بیلیارد"},
+         {x:228,y:486,a:"idle",d:1,l:"بیلیارد"},
+         {x:368,y:486,a:"idle",d:1,l:"بیلیارد"}] },
+
+{ id:"hall", nm:"CORRIDOR", fa:"راهرو", w:448, h:192, x:960, y:1168, door:224,
+  L:["Condominium_Design_2_layer_1_32x32.png","Condominium_Design_2_layer_2_32x32.png"],
+  anim:[["cat",196,120]],
+  spots:[{x:100,y:140,a:"idle",d:1,l:"در زدن"},
+         {x:300,y:140,a:"phone",d:3,l:"چک کردن پیام"}] },
+
+];
+const RM = {}; ROOMS.forEach(r => RM[r.id] = r);
+const OFFICE = RM.office;
+// the chief: his own desk at the head of the room, tied to no session
+const BOSS = {room:"studio", x:134, y:142, name:"Ali Akbar"};
+
+// The plan is computed, not typed in. Rooms sit in rows, bottom aligned so every
+// door opens onto the same corridor, with one constant 64px gap everywhere. What
+// a short room leaves over becomes a solid block, so the corridor never widens
+// into a dead cove.
+const GAP = 64;
+const LAYOUT = [["office","gym","music"],
+                ["studio","cafe","home","jp"],
+                ["range","lobby","hall"]];
+const FILL = [];
+const q16 = n => Math.ceil(n/16)*16;
+let planW = 0;
+LAYOUT.forEach(row => planW = Math.max(planW, row.reduce((a,id) => a + RM[id].w + GAP, -GAP)));
+let planY = PAD;
+LAYOUT.forEach(row => {
+  const rh = Math.max(...row.map(id => q16(RM[id].h)));
+  let x = PAD;
+  row.forEach(id => {
+    const r = RM[id];
+    r.x = x; r.y = planY + rh - q16(r.h);
+    x += r.w + GAP;
+  });
+  planY += rh + GAP;
+});
+// the game room does not belong to any row, so it gets its own column on the right
+const TALL = RM.game;
+TALL.x = PAD + planW + GAP;
+TALL.y = planY - GAP - q16(TALL.h);
+const WORLD_W = TALL.x + TALL.w + PAD, WORLD_H = planY - GAP + PAD;
+// six bots plus the chief, who is his own man and belongs to no session
+const CH_FILES = ["01","04","06","09","12","15","18"];
+
+/* ------------------------------------------------------------ preloading */
+let pending = 1, ready = false, WD = null;
+function done(){ if (!--pending){ boot(); ready = true; } }
+function load(key, url){
+  pending++;
+  const im = new Image();
+  im.onload = () => { IMG[key] = im; done(); };
+  im.onerror = done;
+  im.src = url;
+}
+ROOMS.forEach(r => r.L.forEach((f,i) => load(r.id+"_"+i, ROOMDIR+f)));
+CH_FILES.forEach((c,i) => load("ch"+i, CHDIR+"Premade_Character_32x32_"+c+".png"));
+Object.keys(ANIM).forEach(k => load("an_"+k, ANDIR+ANIM[k].f));
+load("corridor", "limezu/office/corridor.png");
+load("door", "limezu/office/door.png");
+load("block", "limezu/office/block.png");
+["dumbbell","icecream"].forEach(k => load("pr_"+k, "limezu/props/"+k+".png"));
+load("pill", "limezu/ui/pill1x.png");
+pending++;
+fetch("limezu/world_data.json").then(r => r.json())
+  .then(j => { WD = j; done(); }).catch(done);
+done();
+
+/* --------------------------------------------------------- the walk grid */
+const G = 16;
+const GW = Math.ceil(WORLD_W/G), GH = Math.ceil(WORLD_H/G);
+const grid = new Uint8Array(GW*GH);
+let STATIONS = [];
+
+function idx(gx,gy){ return gy*GW + gx; }
+function walk(gx,gy){ return gx>=0 && gy>=0 && gx<GW && gy<GH && grid[idx(gx,gy)] === 1; }
+function walkAt(x,y){ return walk(Math.floor(x/G), Math.floor(y/G)); }
+function roomAt(x,y){
+  return ROOMS.find(r => x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h) || null;
+}
+
+function buildGrid(){
+  // the whole plan is one floor to begin with; each room then stamps its own
+  // mask over it, which is what turns walls and furniture solid
+  for (let gy=0; gy<GH; gy++)
+    for (let gx=0; gx<GW; gx++){
+      const x = gx*G, y = gy*G;
+      grid[idx(gx,gy)] = (x >= PAD-16 && y >= PAD-16 &&
+                          x < WORLD_W-PAD+16 && y < WORLD_H-PAD+16) ? 1 : 0;
+    }
+  FILL.forEach(([fx,fy,fw,fh]) => {
+    for (let gy=fy/G; gy<(fy+fh)/G; gy++)
+      for (let gx=fx/G; gx<(fx+fw)/G; gx++) grid[idx(gx,gy)] = 0;
+  });
+  ROOMS.forEach(r => {
+    const m = WD && WD[r.id];
+    const ox = r.x/G, oy = r.y/G;
+    for (let gy=0; gy<Math.ceil(r.h/G); gy++)
+      for (let gx=0; gx<Math.ceil(r.w/G); gx++){
+        const row = m && m.mask[gy];
+        grid[idx(ox+gx, oy+gy)] = (row && row[gx] === "1") ? 1 : 0;
+      }
+  });
+  // Most of the pack's designs are already open on one side, and that opening is
+  // where a bot should walk in. Only a design that is sealed shut gets a hole cut
+  // for it, and only then does a door sprite get drawn over that hole.
+  ROOMS.forEach(r => {
+    const x0 = r.x/G, y0 = r.y/G, cw = Math.ceil(r.w/G), ch = Math.ceil(r.h/G);
+    r.carved = false;
+    const seen = new Int32Array(cw*ch).fill(-1);
+    const islands = [];
+    for (let a=0; a<ch; a++) for (let b=0; b<cw; b++){
+      if (seen[a*cw+b] >= 0 || !walk(x0+b, y0+a)) continue;
+      const id = islands.length, cells = [];
+      const st = [[b,a]]; seen[a*cw+b] = id;
+      while (st.length){
+        const [cx,cy] = st.pop(); cells.push([cx,cy]);
+        for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+          const nx = cx+dx, ny = cy+dy;
+          if (nx<0||ny<0||nx>=cw||ny>=ch||seen[ny*cw+nx]>=0||!walk(x0+nx,y0+ny)) continue;
+          seen[ny*cw+nx] = id; st.push([nx,ny]);
+        }
+      }
+      islands.push(cells);
+    }
+    if (!islands.length) return;
+    let big = 0;
+    islands.forEach((c,i) => { if (c.length > islands[big].length) big = i; });
+    // if the room's own floor already runs out to an edge, that is its doorway
+    if (islands[big].some(([b,a]) => b === 0 || a === 0 || b === cw-1 || a === ch-1)) return;
+
+    let best = null;
+    for (let b=1; b<cw-1; b++){
+      let d = 0;
+      while (d < ch && seen[(ch-1-d)*cw+b] !== big) d++;
+      if (d >= ch) continue;
+      if (!best || d < best[1]) best = [b, d];
+    }
+    if (!best) return;
+    r.door = best[0]*G; r.carved = true;
+    for (const gx of [x0+best[0], x0+best[0]+1])
+      for (let k=0; k<=best[1]; k++) grid[idx(gx, y0+ch-1-k)] = 1;
+  });
+}
+
+// Standing on a chair or a bench is not allowed, so a target point turns into a
+// list of nearby cells the bot may stand on, nearest first.
+function snapAll(x, y, max){
+  const gx = Math.floor(x/G), gy = Math.floor(y/G), out = [];
+  if (walk(gx,gy)) out.push([gx,gy]);
+  for (let r=1; r<=(max||8); r++)
+    for (let dy=-r; dy<=r; dy++)
+      for (let dx=-r; dx<=r; dx++){
+        if (Math.max(Math.abs(dx),Math.abs(dy)) !== r) continue;
+        if (walk(gx+dx, gy+dy)) out.push([gx+dx, gy+dy]);
+      }
+  return out;
+}
+function snap(x, y){ const c = snapAll(x, y, 8); return c.length ? c[0] : null; }
+
+// A* over the world grid, 8-way, never cutting a corner through a solid cell.
+// It accepts any of the target's neighbouring cells as the goal, so a spot that
+// sits on a treadmill is still reachable: the bot stands beside it.
+function route(sx, sy, tx, ty, rad){
+  const s = snap(sx,sy), cand = snapAll(tx,ty,rad||2);
+  if (!s || !cand.length) return null;
+  const S = idx(s[0],s[1]);
+  const goals = new Set(cand.map(c => idx(c[0],c[1])));
+  if (goals.has(S)) return [];
+  const a0 = cand[0];
+  const came = new Map(), gsc = new Map([[S,0]]);
+  const h = a => { const dx = Math.abs(a%GW - a0[0]), dy = Math.abs(((a/GW)|0) - a0[1]);
+                   return (dx+dy) - 0.586*Math.min(dx,dy); };
+  const open = [[h(S), S]];
+  const N8 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  let guard = 0;
+  while (open.length && guard++ < 40000){
+    let bi = 0;
+    for (let i=1;i<open.length;i++) if (open[i][0] < open[bi][0]) bi = i;
+    const cur = open.splice(bi,1)[0][1];
+    if (goals.has(cur)){
+      const out = []; let n = cur;
+      while (n !== S){ out.push([n%GW, (n/GW)|0]); n = came.get(n); }
+      return out.reverse();
+    }
+    const cx = cur%GW, cy = (cur/GW)|0, cg = gsc.get(cur);
+    for (const [dx,dy] of N8){
+      const nx = cx+dx, ny = cy+dy;
+      if (!walk(nx,ny)) continue;
+      if (dx && dy && (!walk(cx+dx,cy) || !walk(cx,cy+dy))) continue;
+      const ni = idx(nx,ny), ng = cg + (dx && dy ? 1.414 : 1);
+      if (gsc.has(ni) && gsc.get(ni) <= ng) continue;
+      gsc.set(ni, ng); came.set(ni, cur);
+      open.push([ng + h(ni), ni]);
+    }
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ draw */
+function drawAnim(key, wx, wy, t){
+  const a = ANIM[key], im = IMG["an_"+key];
+  if (!im) return;
+  const f = Math.floor(t*a.fps) % a.n;
+  g.drawImage(im, f*a.w, 0, a.w, a.h, wx, wy, a.w, a.h);
+}
+function drawChar(n, x, y, act, dir, t, seed){
+  const im = IMG["ch"+(n%CH_FILES.length)]; if (!im) return;
+  const A = ACT[act] || ACT.idle;
+  let d = dir;
+  if (A.dirs === 1) d = 0;
+  else if (A.dirs === 2) d = (dir === 2 || dir === 1) ? 1 : 0;
+  const f = Math.floor((t+seed)*A.fps) % A.per;
+  g.drawImage(im, (d*A.per+f)*32, A.row*64, 32, 64,
+              Math.round(x-16), Math.round(y-58), 32, 64);
+}
+// 9-slice a UI sprite to any size, so the name plates are pack art
+function nine(im, s, x, y, w, h){
+  if (!im) return;
+  const iw = im.width, ih = im.height, cw = iw-2*s, ch = ih-2*s;
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  const mw = Math.max(1, w-2*s), mh = Math.max(1, h-2*s);
+  g.drawImage(im, 0,0,s,s, x,y,s,s);
+  g.drawImage(im, s,0,cw,s, x+s,y,mw,s);
+  g.drawImage(im, iw-s,0,s,s, x+w-s,y,s,s);
+  g.drawImage(im, 0,s,s,ch, x,y+s,s,mh);
+  g.drawImage(im, s,s,cw,ch, x+s,y+s,mw,mh);
+  g.drawImage(im, iw-s,s,s,ch, x+w-s,y+s,s,mh);
+  g.drawImage(im, 0,ih-s,s,s, x,y+h-s,s,s);
+  g.drawImage(im, s,ih-s,cw,s, x+s,y+h-s,mw,s);
+  g.drawImage(im, iw-s,ih-s,s,s, x+w-s,y+h-s,s,s);
+}
+function plate(text, cx, bottomY){
+  g.font = "7px monospace"; g.textAlign = "center";
+  const w = Math.max(30, g.measureText(text).width + 16), h = 14;
+  nine(IMG.pill, 6, cx-w/2, bottomY-h, w, h);
+  g.fillStyle = "#241a10";
+  g.fillText(text, cx, bottomY-4);
+}
+// over an empty chair there is no plate to read, just the name under the arrow
+function bareName(text, cx, bottomY){
+  g.font = "bold 7px monospace"; g.textAlign = "center";
+  g.fillStyle = "#000000";
+  g.fillText(text, cx, bottomY);
+}
+
+/* ---------------------------------------------------------------- sound */
+// The music room is audible: a bot standing at an instrument strikes a note now
+// and then. Browsers only allow audio after a click, so it starts muted and the
+// header toggles it on. Nothing is streamed -- every note is synthesised here.
+let AX = null, SOUND = false;
+const SCALE = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25];
+function tone(f, dur, type, vol, glide){
+  const t = AX.currentTime, o = AX.createOscillator(), gn = AX.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (glide) o.frequency.exponentialRampToValueAtTime(f*glide, t+dur);
+  gn.gain.setValueAtTime(0, t);
+  gn.gain.linearRampToValueAtTime(vol, t+0.012);
+  gn.gain.exponentialRampToValueAtTime(0.0008, t+dur);
+  o.connect(gn); gn.connect(AX.destination); o.start(t); o.stop(t+dur+0.05);
+}
+function thud(vol, dur, f0, f1){
+  tone(f0, dur, "sine", vol, f1/f0);
+  const n = AX.createBufferSource(), len = (AX.sampleRate*dur)|0;
+  const buf = AX.createBuffer(1, len, AX.sampleRate), d = buf.getChannelData(0);
+  for (let k=0;k<len;k++) d[k] = (Math.random()*2-1) * Math.pow(1-k/len, 3);
+  const gn = AX.createGain(); gn.gain.value = vol*0.5;
+  n.buffer = buf; n.connect(gn); gn.connect(AX.destination); n.start();
+}
+function note(kind, seed){
+  const p = SCALE[(Math.random()*SCALE.length)|0];
+  if (kind === "piano")  tone(p, 1.1, "triangle", 0.09);
+  else if (kind === "keys")   tone(p*2, 0.5, "square", 0.045);
+  else if (kind === "guitar") tone(p, 0.55, "sawtooth", 0.05);
+  else if (kind === "harp")   [0,2,4].forEach((k,j) =>
+                                setTimeout(() => AX && tone(SCALE[(k+seed)%SCALE.length]*2, 0.9,
+                                                            "triangle", 0.045), j*70));
+  else if (kind === "drum")   thud(0.16, 0.18, 150, 55);
+  else if (kind === "conga")  thud(0.10, 0.14, 300, 160);
+  else if (kind === "sing")   tone(p, 0.9, "sine", 0.05, 1.06);
+}
+function soundToggle(){
+  SOUND = !SOUND;
+  if (SOUND){
+    AX = AX || new (window.AudioContext || window.webkitAudioContext)();
+    if (AX.state === "suspended") AX.resume();
+  }
+  document.getElementById("bSound").textContent = SOUND ? "\u266a ON" : "\u266a OFF";
+}
+document.getElementById("bSound").onclick = soundToggle;
+
+/* ------------------------------------------------------------ bot brains */
+const LIFE = [];
+function rnd(a,b){ return a + Math.random()*(b-a); }
+
+// a target is only taken if the grid can actually get there; otherwise the bot
+// keeps what it was doing and tries something else next tick, because the one
+// thing it must never do is walk the straight line through a wall
+function setTarget(i, T){
+  const L = LIFE[i];
+  const p = route(L.x, L.y, T.x, T.y, 2);
+  if (!p) return false;
+  // Standing next to the treadmill is not using it. A spot marked `on` is walked
+  // onto exactly -- the chair, the bench, the belt -- and every other spot ends
+  // on the last cell of the path, never on a straight line across the furniture.
+  if (p.length && !T.on){
+    const c = p[p.length-1], cx = c[0]*G+G/2, cy = c[1]*G+G/2;
+    if (Math.hypot(T.x-cx, T.y-cy) > 12) T = Object.assign({}, T, {x:cx, y:cy});
+  }
+  L.target = T; L.path = p; L.pi = 0; L.done = false;
+  return true;
+}
+function goDesk(i, working){
+  const s = STATIONS[i];
+  return setTarget(i, {x:OFFICE.x+s[0], y:OFFICE.y+s[1], act:"idle", d:1, desk:true, on:true,
+                       l: working ? "پشت مانیتور، در حال کار" : "سر جای خودش"});
+}
+function goPlay(i){
+  const pool = ROOMS.filter(r => r.id !== "office" && r.spots.length);
+  for (let k=0;k<8;k++){
+    const r = pool[(Math.random()*pool.length)|0];
+    const s = r.spots[(Math.random()*r.spots.length)|0];
+    if (setTarget(i, {x:r.x+s.x, y:r.y+s.y, act:s.a, d:s.d, l:s.l, on:s.on, prop:s.p,
+                      snd:s.snd})) return true;
+  }
+  return false;
+}
+function goWander(i){
+  const L = LIFE[i], r = roomAt(L.x, L.y);
+  for (let k=0;k<24;k++){
+    const x = r ? rnd(r.x+24, r.x+r.w-24) : rnd(PAD, WORLD_W-PAD);
+    const y = r ? rnd(r.y+40, r.y+r.h-24) : rnd(PAD, WORLD_H-PAD);
+    if (walkAt(x,y) && setTarget(i, {x, y, act:"idle", d:3, l:"قدم زدن"})) return true;
+  }
+  return goPlay(i);
+}
+
+function think(i, bot, now){
+  const L = LIFE[i];
+  const working = bot && (bot.state === "running" || bot.state === "error");
+  if (working){
+    if (!L.target || !L.target.desk) goDesk(i, true);
+    return;
+  }
+  if (L.target && L.target.desk && L.done){ L.until = 0; L.target = null; }
+  if (L.target && !L.done) return;          // let it finish walking there first
+  if (now < L.until) return;
+  // off duty means off the chair: the desk is not one of the choices
+  if (Math.random() < 0.72) goPlay(i); else goWander(i);
+}
+
+function step(i, dt){
+  const L = LIFE[i], T = L.target;
+  if (!T) return;
+  let tx, ty, last = false;
+  if (L.pi < L.path.length){ const c = L.path[L.pi]; tx = c[0]*G+G/2; ty = c[1]*G+G/2; }
+  else { tx = T.x; ty = T.y; last = true; }
+
+  const dx = tx-L.x, dy = ty-L.y, dist = Math.hypot(dx,dy);
+  if (dist < (last ? 1.2 : 3)){
+    if (!last){ L.pi++; return; }
+    L.act = T.act; L.dir = T.d; L.label = T.l;
+    if (!L.done){ L.done = true; L.until = performance.now()/1000 + rnd(14, 34); }
+    return;
+  }
+  const k = Math.min(1, 46*dt/dist);
+  L.x += dx*k; L.y += dy*k;
+  L.act = "walk";
+  L.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 3 : 1);
+  L.label = "در حال رفتن";
+}
+
+/* -------------------------------------------------------------- the data */
+let DATA = {bots:[], logs:[], machine:{}, view:false};
+let VIEW = false;
+
+async function poll(){
+  try{
+    const r = await fetch("api/status" + (KEY ? "?k="+encodeURIComponent(KEY) : ""),
+                          {cache:"no-store"});
+    DATA = await r.json();
+    VIEW = !!DATA.view;
+    paintChrome();
+  }catch(e){}
+}
+
+function paintChrome(){
+  const bs = DATA.bots || [];
+  document.getElementById("tBots").textContent =
+    bs.filter(b => b.state === "running").length + "/" + bs.length + " ACTIVE";
+  const m = DATA.machine || {};
+  document.getElementById("tCpu").textContent = (m.cpu == null ? "–" : m.cpu+"%");
+  document.getElementById("tRam").textContent = (m.ram == null ? "–" : m.ram+"%");
+  document.getElementById("badge").textContent = VIEW ? "VIEW ONLY" : "";
+  document.getElementById("logs").style.display = VIEW ? "none" : "";
+  document.getElementById("sessWrap").style.display = VIEW ? "none" : "";
+  document.getElementById("bRestart").style.display = VIEW ? "none" : "";
+  document.getElementById("bStop").style.display = VIEW ? "none" : "";
+
+  const rl = document.getElementById("rlist");
+  const count = {};
+  LIFE.forEach(L => { const r = roomAt(L.x,L.y); if (r) count[r.id] = (count[r.id]||0)+1; });
+  rl.innerHTML = '<div class="rm'+(focusRoom==="*"?" on":"")+'" data-r="*">'+
+    '<span class="nm">◱ WHOLE FLOOR</span></div>' + ROOMS.map(r =>
+    '<div class="rm'+(r.id===focusRoom?" on":"")+'" data-r="'+r.id+'">'+
+    '<span class="nm">'+r.nm+'</span>'+ (count[r.id] ? '<b>'+count[r.id]+'</b>' : '') +
+    dots(r.id) + '</div>').join("");
+  [...rl.children].forEach(el => el.onclick = () => focus(el.dataset.r));
+
+  if (!VIEW)
+    document.getElementById("llist").innerHTML = (DATA.logs||[]).slice(-40).reverse()
+      .map(l => '<div class="ln"><span class="t">'+l.t+'</span><span class="w">'+
+        esc(l.who)+'</span><span class="lv-'+l.level+'">'+esc(l.msg)+'</span></div>').join("");
+  if (cardBot != null) fillCard(cardBot);
+}
+function dots(rid){
+  let s = "";
+  LIFE.forEach((L,i) => { const r = roomAt(L.x,L.y);
+    if (r && r.id === rid){ const b = (DATA.bots||[])[i];
+      s += '<i style="background:'+(b?b.color:"#888")+'"></i>'; }});
+  return s;
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+/* --------------------------------------------------------------- camera */
+let focusRoom = "office", cam = {x:0,y:0,s:2}, camT = {x:0,y:0,s:2}, follow = null;
+function focus(id){
+  focusRoom = id; follow = null;
+  if (id === "*"){
+    camT.s = Math.min((cv.width-30)/WORLD_W, (cv.height-30)/WORLD_H);
+    camT.x = WORLD_W/2; camT.y = WORLD_H/2;
+    paintChrome(); return;
+  }
+  const r = RM[id];
+  camT.s = Math.max(1.2, Math.min(3.4,
+    Math.min((cv.width-40)/(r.w+80), (cv.height-40)/(r.h+80))));
+  camT.x = r.x + r.w/2; camT.y = r.y + r.h/2;
+  paintChrome();
+}
+
+/* ----------------------------------------------------------------- frame */
+let hits = [], tags = [];
+function resize(){ cv.width = cv.clientWidth; cv.height = cv.clientHeight; focus(focusRoom); }
+window.addEventListener("resize", resize);
+
+function boot(){
+  buildGrid();
+  STATIONS = (WD && WD._stations) ||
+             [[112,236],[320,236],[528,236],[112,404],[320,404],[528,404]];
+  for (let i=0;i<6;i++){
+    const s = STATIONS[i];
+    LIFE.push({ x:OFFICE.x+s[0], y:OFFICE.y+s[1], act:"idle", dir:1, path:[], pi:0,
+                until:0, seed:i*1.7, label:"پشت مانیتور", target:null });
+  }
+  resize(); poll(); setInterval(poll, 3000);
+}
+
+let last = performance.now()/1000;
+function frame(){
+  requestAnimationFrame(frame);
+  const now = performance.now()/1000, dt = Math.min(0.05, now-last); last = now;
+  if (!ready) return;
+
+  const bots = DATA.bots || [];
+  for (let i=0;i<6;i++){ think(i, bots[i], now); step(i, dt); }
+
+  if (follow != null){ camT.x = LIFE[follow].x; camT.y = LIFE[follow].y; }
+  cam.x += (camT.x-cam.x)*Math.min(1, dt*3.2);
+  cam.y += (camT.y-cam.y)*Math.min(1, dt*3.2);
+  cam.s += (camT.s-cam.s)*Math.min(1, dt*3.2);
+
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = "#0b0913"; g.fillRect(0,0,cv.width,cv.height);
+  g.save();
+  g.translate(Math.round(cv.width/2), Math.round(cv.height/2));
+  g.scale(cam.s, cam.s);
+  g.translate(-cam.x, -cam.y);
+
+  const vw = cv.width/cam.s, vh = cv.height/cam.s;
+  const v = {x0: cam.x-vw/2-64, y0: cam.y-vh/2-64, x1: cam.x+vw/2+64, y1: cam.y+vh/2+64};
+
+  // one continuous floor under the whole plan: no void between the rooms
+  if (IMG.corridor){
+    const t = IMG.corridor, ts = t.width;
+    const sx = Math.max(0, Math.floor(v.x0/ts)*ts), ex = Math.min(WORLD_W, v.x1);
+    const sy = Math.max(0, Math.floor(v.y0/ts)*ts), ey = Math.min(WORLD_H, v.y1);
+    for (let y=sy; y<ey; y+=ts) for (let x=sx; x<ex; x+=ts) g.drawImage(t, x, y);
+    g.strokeStyle = "#1a1520"; g.lineWidth = 8;
+    g.strokeRect(-4, -4, WORLD_W+8, WORLD_H+8);
+  }
+  if (IMG.block)
+    FILL.forEach(([fx,fy,fw,fh]) => {
+      if (fx > v.x1 || fx+fw < v.x0 || fy > v.y1 || fy+fh < v.y0) return;
+      for (let y=fy; y<fy+fh; y+=32) for (let x=fx; x<fx+fw; x+=32) g.drawImage(IMG.block, x, y);
+      g.fillStyle = "#00000030"; g.fillRect(fx, fy, fw, fh);
+    });
+
+  hits = []; tags = [];
+  ROOMS.forEach(r => {
+    if (r.x > v.x1 || r.x+r.w < v.x0 || r.y > v.y1 || r.y+r.h < v.y0) return;
+
+    g.fillStyle = "#00000040";
+    g.fillRect(r.x-3, r.y-3, r.w+6, r.h+8);
+    if (IMG[r.id+"_0"]) g.drawImage(IMG[r.id+"_0"], r.x, r.y);
+
+    const list = [];
+    (r.anim||[]).forEach(([k,ax,ay]) =>
+      list.push([r.y+ay+(k === "tapis" ? 40 : ANIM[k].h), () => drawAnim(k, r.x+ax, r.y+ay, now)]));
+    LIFE.forEach((L,i) => { if (roomAt(L.x,L.y) === r) list.push([L.y, () => paintBot(i, bots[i], now)]); });
+    list.sort((a,b) => a[0]-b[0]).forEach(e => e[1]());
+
+    for (let k=1;k<r.L.length;k++)
+      if (IMG[r.id+"_"+k]) g.drawImage(IMG[r.id+"_"+k], r.x, r.y);
+
+    if (r.id === BOSS.room) paintBoss(now);   // over the chair back, not behind it
+    door(r);
+    if (r.id === "office"){
+      deskScreens(bots, now);
+      emptySeats(bots, now);
+    }
+    if (r.id !== focusRoom){
+      g.fillStyle = "#0b0913"; g.globalAlpha = 0.42;
+      g.fillRect(r.x-3, r.y-3, r.w+6, r.h+8);
+      g.globalAlpha = 1;
+    }
+    g.font = "9px monospace"; g.textAlign = "center";
+    g.fillStyle = r.id === focusRoom ? "#f2ead9cc" : "#f2ead955";
+    g.fillText(r.nm, r.x + r.w/2, r.y + r.h + 18);
+  });
+
+  LIFE.forEach((L,i) => { if (!roomAt(L.x,L.y)) paintBot(i, bots[i], now); });
+
+  if (SOUND && AX){
+    const mr = RM.music;
+    const heard = !(mr.x > v.x1 || mr.x+mr.w < v.x0 || mr.y > v.y1 || mr.y+mr.h < v.y0);
+    if (heard) LIFE.forEach((L,i) => {
+      if (!L.done || !L.target || !L.target.snd || now < (L.nextNote||0)) return;
+      L.nextNote = now + 0.35 + Math.random()*0.8;
+      note(L.target.snd, i);
+    });
+  }
+  tags.forEach(fn => fn());
+
+  g.restore();
+  drawMini();
+  document.getElementById("tClock").textContent = new Date().toLocaleTimeString("en-GB");
+}
+
+function paintBoss(t){
+  const r = RM[BOSS.room], x = r.x + BOSS.x, y = r.y + BOSS.y;
+  drawChar(6, x, y, "sit", 1, t, 3.3);
+  tags.push(() => { if (cam.s >= 1.4) plate(BOSS.name, x, y-50); });
+}
+
+function paintBot(i, b, t){
+  const L = LIFE[i];
+  drawChar(i, L.x, L.y, L.act, L.dir, t, L.seed);
+  const pr = L.done && L.target && L.target.prop && IMG["pr_"+L.target.prop];
+  if (pr){
+    const hx = L.dir === 2 ? -13 : L.dir === 0 ? 13 : 10;
+    const bob = L.target.prop === "dumbbell" ? Math.sin(t*3+i)*3 : 0;
+    g.drawImage(pr, Math.round(L.x + hx - pr.width/2),
+                    Math.round(L.y - 28 + bob - pr.height/2));
+  }
+  hits.push([i, L.x-16, L.y-46, 32, 46]);
+  const headY = L.y - 40;
+  tags.push(() => {
+    if (b && b.state === "error"){
+      g.fillStyle = "#ff4b4b";
+      const by = headY - 22 + Math.sin(t*3+i)*1.5;
+      for (let k=-4;k<=4;k++){ g.fillRect(L.x+k-1, by+k-1, 2, 2); g.fillRect(L.x+k-1, by-k-1, 2, 2); }
+    }
+    if (cam.s < 1.4) return;
+    plate(b ? b.name : "?", L.x, headY);
+    if (b && b.state === "running"){ g.fillStyle = "#2f8a3f"; g.fillRect(L.x-4, headY+1, 8, 2); }
+  });
+}
+
+// a red marker over any workstation whose bot is somewhere else
+function emptySeats(bots, t){
+  const bob = Math.sin(t*2.4)*2;
+  STATIONS.forEach((s,i) => {
+    const L = LIFE[i], sx = OFFICE.x+s[0], sy = OFFICE.y+s[1];
+    if (Math.hypot(L.x-sx, L.y-sy) < 64) return;
+    const b = bots[i];
+    tags.push(() => {
+      const top = sy - 126 + bob;   // clear of the desk and its monitor
+      g.fillStyle = "#e03a3a";
+      g.fillRect(sx-2, top, 4, 13);
+      for (let k=0;k<6;k++) g.fillRect(sx-6+k, top+13+k, 12-2*k, 2);
+      bareName(b ? b.name : "?", sx, top - 5);
+    });
+  });
+}
+
+function door(r){
+  if (!IMG.door || !r.carved) return;
+  const cx = r.x + r.door + 16, cy = r.y + r.h - 52;   // the hole is two cells wide
+  const near = LIFE.some(L => Math.abs(L.x-cx) < 44 && Math.abs(L.y-(cy+44)) < 64);
+  r.dopen = Math.max(0, Math.min(1, (r.dopen||0) + (near ? 0.09 : -0.09)));
+  const f = Math.min(DOOR.n-1, Math.round(r.dopen*(DOOR.n-1)));
+  g.drawImage(IMG.door, f*DOOR.w, 0, DOOR.w, DOOR.h, cx-16, cy, DOOR.w, DOOR.h);
+}
+
+// every bot has its own monitor on the desk in front of it: that is where its
+// session shows up, dark and asleep when the bot is not working
+function deskScreens(bots, t){
+  STATIONS.forEach((s,i) => {
+    const b = bots[i];
+    const x = OFFICE.x + s[0] - 21, y = OFFICE.y + s[1] - 86;
+    const on = b && (b.state === "running" || b.state === "error");
+    g.fillStyle = "#241a12"; g.fillRect(x-2, y-2, 46, 32);
+    g.fillStyle = b && b.state === "error" ? "#2a1016" : on ? "#07161f" : "#141019";
+    g.fillRect(x, y, 42, 28);
+    if (VIEW || !on || !b.pane || !b.pane.length){
+      g.fillStyle = on ? "#4fd0ff55" : "#ffffff14";
+      for (let k=0;k<3;k++) g.fillRect(x+4, y+6+k*7, 34-k*9, 2);
+    } else {
+      g.save();
+      g.beginPath(); g.rect(x+2, y+2, 38, 24); g.clip();
+      g.font = "5px monospace"; g.textAlign = "left";
+      b.pane.slice(-4).forEach((ln,j) => {
+        g.fillStyle = j === 3 ? (b.color || "#7ef0a0") : "#4fd0ff";
+        g.fillText(ln.trim().slice(0,17), x+3, y+8+j*6);
+      });
+      g.restore();
+    }
+    g.fillStyle = "#3b2b1c"; g.fillRect(x+8, y+31, 26, 4);   // keyboard
+    hits.push([i, x-2, y-2, 46, 40]);                        // the screen opens the session
+  });
+}
+
+/* --------------------------------------------------------------- minimap */
+const mmc = document.getElementById("mmc"), mg = mmc.getContext("2d");
+const MMS = 0.1;
+mmc.width = Math.round(WORLD_W*MMS); mmc.height = Math.round(WORLD_H*MMS);
+function drawMini(){
+  mg.imageSmoothingEnabled = false;
+  mg.fillStyle = "#2a2118"; mg.fillRect(0,0,mmc.width,mmc.height);
+  ROOMS.forEach(r => {
+    mg.fillStyle = r.id === focusRoom ? "#e0a552" : "#7d5a34";
+    mg.fillRect(r.x*MMS, r.y*MMS, r.w*MMS, r.h*MMS);
+  });
+  LIFE.forEach((L,i) => {
+    const b = (DATA.bots||[])[i];
+    mg.fillStyle = b ? b.color : "#fff";
+    mg.fillRect(L.x*MMS-1.5, L.y*MMS-1.5, 3, 3);
+  });
+}
+mmc.onclick = e => {
+  const rc = mmc.getBoundingClientRect();
+  const wx = (e.clientX-rc.left)/rc.width*WORLD_W, wy = (e.clientY-rc.top)/rc.height*WORLD_H;
+  focus((roomAt(wx,wy) || {id:"*"}).id);
+};
+
+/* ----------------------------------------------------------------- click */
+cv.addEventListener("click", e => {
+  const rc = cv.getBoundingClientRect();
+  const sx = (e.clientX-rc.left) * (cv.width/rc.width);
+  const sy = (e.clientY-rc.top) * (cv.height/rc.height);
+  const wx = (sx - cv.width/2)/cam.s + cam.x, wy = (sy - cv.height/2)/cam.s + cam.y;
+  for (let k=hits.length-1;k>=0;k--){
+    const [i,x,y,w,h] = hits[k];
+    if (wx>x && wx<x+w && wy>y && wy<y+h){ openCard(i); return; }
+  }
+  const r = roomAt(wx,wy);
+  if (r && r.id !== focusRoom) focus(r.id);
+});
+
+/* ------------------------------------------------------------------ card */
+let cardBot = null;
+const pf = document.getElementById("pf"), pg = pf.getContext("2d");
+function openCard(i){ cardBot = i; fillCard(i); document.getElementById("modal").classList.add("on"); }
+window.closeCard = function(){ cardBot = null; document.getElementById("modal").classList.remove("on"); };
+document.getElementById("modal").addEventListener("click", e => {
+  if (e.target.id === "modal") closeCard();
+});
+function fillCard(i){
+  const b = (DATA.bots||[])[i], L = LIFE[i], r = roomAt(L.x,L.y);
+  document.getElementById("cName").textContent = b ? b.name : "?";
+  document.getElementById("cSub").textContent  = b ? (b.fa + "  ·  " + b.id) : "";
+  document.getElementById("cState").textContent =
+    b ? {running:"در حال کار", idle:"بیکار", off:"خاموش", error:"خطا"}[b.state] || b.state : "—";
+  document.getElementById("cModel").textContent = (b && b.model) || "—";
+  document.getElementById("cWhere").textContent = r ? r.fa : "راهروی مرکزی";
+  document.getElementById("cAct").textContent = L.label || "—";
+  const ctx = b && b.ctx != null ? b.ctx : 0;
+  document.getElementById("cCtx").style.width = Math.max(0, Math.min(100, ctx)) + "%";
+  document.getElementById("cCtxT").textContent = (b && b.ctx != null) ? ctx+"%" : "نامعلوم";
+  if (!VIEW) document.getElementById("sess").textContent =
+    (b && b.pane && b.pane.length) ? b.pane.join("\n") : "— بدون خروجی —";
+  pg.imageSmoothingEnabled = false;
+  pg.clearRect(0,0,32,64);
+  const im = IMG["ch"+(i%6)];
+  if (im) pg.drawImage(im, 18*32, 64, 32, 64, 0, 0, 32, 64);
+  const dis = VIEW || !b;
+  document.getElementById("bRestart").disabled = dis;
+  document.getElementById("bStop").disabled = dis || (b && b.managed);
+}
+document.getElementById("bFocus").onclick = () => {
+  if (cardBot == null) return;
+  const r = roomAt(LIFE[cardBot].x, LIFE[cardBot].y);
+  if (r) focusRoom = r.id;
+  follow = cardBot; camT.s = 3.0; closeCard(); paintChrome();
+};
+async function act(action){
+  const b = (DATA.bots||[])[cardBot]; if (!b) return;
+  toast("…");
+  const r = await fetch("api/action", {method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({key:KEY, id:b.id, action})});
+  const j = await r.json();
+  toast(j.msg || (j.ok ? "ok" : "failed"));
+  poll();
+}
+document.getElementById("bRestart").onclick = () => act("restart");
+document.getElementById("bStop").onclick = () => act("stop");
+
+let tt;
+function toast(m){
+  const el = document.getElementById("toast");
+  el.textContent = m; el.style.display = "block";
+  clearTimeout(tt); tt = setTimeout(() => el.style.display = "none", 2600);
+}
+
+window.__world = {LIFE, ROOMS, walkAt, snap, route, cam, hits:()=>hits};   // headless checks poke at this
+frame();
+})();
+</script>

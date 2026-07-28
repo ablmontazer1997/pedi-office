@@ -1,0 +1,6 @@
+token.txt
+__pycache__/
+*.pyc
+server.log
+*.tar.gz
+*.bak

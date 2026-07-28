@@ -1,0 +1,332 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RADE OFFICE — live room</title>
+<style>
+  html,body{height:100%;margin:0;background:#07060c;color:#8f82ab;
+    font:12px ui-monospace,Menlo,Consolas,monospace;overflow:hidden}
+  #wrap{position:absolute;inset:0;display:grid;place-items:center}
+  canvas{image-rendering:pixelated;display:block}
+  #hud{position:absolute;left:10px;top:10px;background:rgba(12,9,20,.8);
+    border:1px solid #2f2646;border-radius:5px;padding:6px 9px;letter-spacing:1px}
+  #hud b{color:#b57bff;font-weight:400}
+</style></head><body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<div id="hud"><b id="act">…</b></div>
+<script>
+const cv = document.getElementById("cv"), cx = cv.getContext("2d");
+
+/* ?seed=N makes the wandering repeatable, which is the only way to screenshot
+   the same run twice and get a real animation out of it */
+const SEED = parseInt(new URLSearchParams(location.search).get("seed") || "0", 10);
+let _s = SEED >>> 0;
+const rnd = SEED ? () => ((_s = (_s * 1664525 + 1013904223) >>> 0) / 4294967296) : Math.random;
+const IMG = {}, load = (k, src) => new Promise(res => {
+  const i = new Image(); i.onload = () => { IMG[k] = i; res(); }; i.onerror = () => res(); i.src = src;
+});
+
+let S = null, GRID = null, GW = 0, GH = 0, CELL = 10, W = 0, H = 0, SCALE = 1;
+
+/* ---- how big a character is drawn: one factor per person, so their seated
+   frame and their walking frame stay the same body. STAND is the height, in
+   room pixels, of the walking sprite from sole to hair. ---- */
+const STAND = 140;
+const K = {};                               // tag -> scale, set once frames load
+
+/* rows, as extract_rade.py wrote them */
+const ROW = {S:"r0", SE:"r4", E:"r5", NE:"r6", N:"r7", W:"r8", NW:"r9", SW:"r10",
+             type:"r1", typeBack:"r11", mug:"r2", sleep:"r3", react:"r12",
+             sofa:"r13", drink:"r14"};
+
+let CAST = [];
+
+async function boot(){
+  S = await (await fetch("office/scene.json", {cache:"no-store"})).json();
+  [W, H] = S.world; CELL = S.cell;
+  GRID = S.grid; GH = GRID.length; GW = GRID[0].length;
+  CAST = Object.keys(S.chars);
+  const jobs = [load("bg", "office/room_bg.png")];
+  const seen = new Set();
+  for (const p of S.props) if (!seen.has(p.a)) { seen.add(p.a); jobs.push(load("a:" + p.a, "office/assets/" + p.a + ".png")); }
+  for (const tag of CAST)
+    for (const row in S.chars[tag].rows)
+      for (const f of S.chars[tag].rows[row].f)
+        jobs.push(load("c:" + tag + ":" + f.f, "office/chars/" + tag + "/" + f.f + ".png"));
+  await Promise.all(jobs);
+  // scale off the row's median frame, baked in as `base`: one frame of the walk
+  // cycle is always a few pixels taller than the others, and picking it made
+  // that character shorter than everyone else for the whole run
+  for (const tag of CAST) K[tag] = STAND / S.chars[tag].base;
+  fit(); addEventListener("resize", fit);
+  requestAnimationFrame(frame);
+}
+
+function fit(){
+  SCALE = Math.min(innerWidth / W, innerHeight / H);
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  cv.width = Math.round(W * SCALE * dpr); cv.height = Math.round(H * SCALE * dpr);
+  cv.style.width = (W * SCALE) + "px"; cv.style.height = (H * SCALE) + "px";
+  cx.setTransform(SCALE * dpr, 0, 0, SCALE * dpr, 0, 0);
+  cx.imageSmoothingEnabled = false;
+}
+
+/* ------------------------------------------------------------ the floor grid */
+const free = (gx, gy) => gx >= 0 && gy >= 0 && gx < GW && gy < GH && GRID[gy][gx] === "0";
+const cellOf = (x, y) => [Math.floor(x / CELL), Math.floor(y / CELL)];
+const midOf = (gx, gy) => [gx * CELL + CELL / 2, gy * CELL + CELL / 2];
+
+function nearestFree(x, y){
+  let [gx, gy] = cellOf(x, y);
+  if (free(gx, gy)) return [gx, gy];
+  for (let r = 1; r < 40; r++)
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++)
+        if (Math.abs(dx) === r || Math.abs(dy) === r) {
+          if (free(gx + dx, gy + dy)) return [gx + dx, gy + dy];
+        }
+  return null;
+}
+
+/* A*, 8 way, never cutting the corner of a solid cell */
+function path(from, to){
+  const s = nearestFree(from[0], from[1]), g = nearestFree(to[0], to[1]);
+  if (!s || !g) return null;
+  const key = (a, b) => b * GW + a;
+  const open = [[0, s]], came = new Map(), best = new Map([[key(s[0], s[1]), 0]]);
+  const h = (a, b) => Math.hypot(a - g[0], b - g[1]);
+  while (open.length) {
+    open.sort((p, q) => p[0] - q[0]);
+    const [, cur] = open.shift();
+    if (cur[0] === g[0] && cur[1] === g[1]) {
+      const out = []; let k = key(cur[0], cur[1]), c = cur;
+      while (c) { out.push(midOf(c[0], c[1])); c = came.get(k); k = c ? key(c[0], c[1]) : null; }
+      return out.reverse();
+    }
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = cur[0] + dx, ny = cur[1] + dy;
+      if (!free(nx, ny)) continue;
+      if (dx && dy && (!free(cur[0] + dx, cur[1]) || !free(cur[0], cur[1] + dy))) continue;
+      const nk = key(nx, ny), cost = (best.get(key(cur[0], cur[1])) || 0) + (dx && dy ? 1.41 : 1);
+      if (best.has(nk) && best.get(nk) <= cost) continue;
+      best.set(nk, cost); came.set(nk, cur);
+      open.push([cost + h(nx, ny), [nx, ny]]);
+    }
+    if (best.size > 20000) break;
+  }
+  return null;
+}
+
+/* Is the straight line between two points clear? Sampled every few pixels, so a
+   corner of a desk cannot slip between two samples. */
+function clear(ax, ay, bx, by){
+  const d = Math.hypot(bx - ax, by - ay), n = Math.ceil(d / 4);
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const [gx, gy] = cellOf(ax + (bx - ax) * t, ay + (by - ay) * t);
+    if (!free(gx, gy)) return false;
+  }
+  return true;
+}
+
+/* String-pulling: the raw A* result is a staircase of 10 px cells, and walking
+   it literally is what made them wobble — every step flipped the facing between
+   two neighbouring directions. Keeping only the corners that are actually
+   needed turns it into a few long straight legs. */
+function smooth(p){
+  if (!p || p.length < 3) return p;
+  const out = [p[0]];
+  let i = 0;
+  while (i < p.length - 1) {
+    let j = p.length - 1;
+    while (j > i + 1 && !clear(p[i][0], p[i][1], p[j][0], p[j][1])) j--;
+    out.push(p[j]);
+    i = j;
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------- the cast */
+const SPEED = 92;                                    // room px per second
+/* One turn of the eight frame cycle is two steps. Driving the frame index off
+   distance walked instead of off the clock is what stops the feet skating: the
+   sprite only advances a frame once the body has actually moved a step. */
+const STRIDE = 140;                                  // room px per full cycle
+const FACE_HOLD = 180;                               // ms a new facing must be
+                                                     // wanted before it sticks
+const busy = {sofa: null, coffee: null, desks: {}};   // who is using what
+
+function facing(dx, dy){
+  // screen delta -> the eight isometric names; y counts double because the
+  // floor is drawn flatter than it is deep
+  const a = Math.atan2(dy * 2, dx) * 180 / Math.PI;
+  if (a >= -22.5 && a < 22.5) return "E";
+  if (a >= 22.5 && a < 67.5) return "SE";
+  if (a >= 67.5 && a < 112.5) return "S";
+  if (a >= 112.5 && a < 157.5) return "SW";
+  if (a >= 157.5 || a < -157.5) return "W";
+  if (a >= -157.5 && a < -112.5) return "NW";
+  if (a >= -112.5 && a < -67.5) return "N";
+  return "NE";
+}
+
+function face(A, d, now){
+  if (d === A.dir) { A.wantDir = null; return; }
+  if (A.wantDir !== d) { A.wantDir = d; A.wantAt = now; return; }
+  if (now - A.wantAt >= FACE_HOLD) { A.dir = d; A.wantDir = null; }
+}
+
+function frameOf(A, row, i){
+  const set = S.chars[A.tag].rows;
+  const r = set[row] || set[ROW.S];
+  const list = r.f;
+  const f = list[((i % list.length) + list.length) % list.length];
+  return [IMG["c:" + A.tag + ":" + f.f], f, r.k];
+}
+
+function release(A){
+  if (busy.sofa === A) busy.sofa = null;
+  if (busy.coffee === A) busy.coffee = null;
+  for (const k in busy.desks) if (busy.desks[k] === A) delete busy.desks[k];
+}
+
+function goto(A, spot, then, now){
+  const pt = spot.walk || spot;
+  const p = path([A.x, A.y], [pt.x, pt.y]);
+  // no route: stand still for a moment and let the next plan pick something
+  // else. Never re-plan from here, that recurses forever when the only target
+  // allowed is the unreachable one.
+  if (!p) { A.state = "react"; A.emote = 0; A.seat = null; release(A);
+            A.until = now + 1500; return; }
+  A.path = smooth(p); A.pi = 1; A.state = "walk"; A.then = then; A.spot = spot;
+}
+
+const ONLY = new URLSearchParams(location.search).get("only");
+
+function plan(A, now){
+  A.seat = null; release(A);
+  const r = ONLY === "sofa" ? 0 : ONLY === "coffee" ? .3 : ONLY === "desk" ? .6 : ONLY === "look" ? .9 : rnd();
+  if (r < 0.24 && S.spots.sofa && !busy.sofa) {
+    busy.sofa = A; goto(A, S.spots.sofa, "sofa", now);
+  } else if (r < 0.44 && S.spots.coffee && !busy.coffee) {
+    busy.coffee = A; goto(A, S.spots.coffee, "coffee", now);
+  } else if (r < 0.82 && S.spots.desks.length) {
+    const openDesks = S.spots.desks.map((d, i) => i).filter(i => !busy.desks[i]);
+    if (openDesks.length) {
+      const i = openDesks[Math.floor(rnd() * openDesks.length)];
+      busy.desks[i] = A; goto(A, S.spots.desks[i], "desk", now);
+    } else wander(A, now);
+  } else wander(A, now);
+}
+
+function wander(A, now){
+  let gx, gy, n = 0;
+  do { gx = Math.floor(rnd() * GW); gy = Math.floor(rnd() * GH); } while (!free(gx, gy) && ++n < 400);
+  const [x, y] = midOf(gx, gy);
+  goto(A, {x, y}, "look", now);
+}
+
+function arrive(A, now){
+  const what = A.then;
+  A.path = null;
+  // sitting down moves him off the walkable cell and onto the furniture, with
+  // the depth key that furniture needs
+  A.seat = (A.spot && A.spot.sit && what !== "look") ? A.spot.sit : null;
+  if (what === "sofa")        { A.state = "sofa";  A.until = now + 9000 + rnd() * 9000; A.act = "on the sofa"; }
+  else if (what === "coffee") { A.state = "drink"; A.until = now + 6000 + rnd() * 4000; A.act = "coffee"; }
+  else if (what === "desk")   { A.state = "type";  A.until = now + 10000 + rnd() * 12000; A.act = "typing"; }
+  else { A.state = "react"; A.until = now + 3200; A.emote = 1 + Math.floor(rnd() * 7); A.act = "…"; release(A); }
+}
+
+function step(A, dt, now){
+  if (A.state === "walk") {
+    A.act = "walking";
+    let move = SPEED * dt;
+    while (move > 0 && A.path && A.pi < A.path.length) {
+      const [tx, ty] = A.path[A.pi];
+      const dx = tx - A.x, dy = ty - A.y, d = Math.hypot(dx, dy);
+      if (d <= move) { A.x = tx; A.y = ty; A.walked += d; move -= d; A.pi++; }
+      else { A.x += dx / d * move; A.y += dy / d * move; A.walked += move;
+             face(A, facing(dx, dy), now); move = 0; }
+    }
+    if (!A.path || A.pi >= A.path.length) arrive(A, now);
+    A.row = ROW[A.dir]; A.t += dt;
+    A.fi = Math.floor(A.walked / (STRIDE / 8));
+    return;
+  }
+  A.t += dt;
+  const has = r => !!S.chars[A.tag].rows[r];
+  if (A.state === "sofa")  { A.row = has(ROW.sofa) ? ROW.sofa : ROW.mug;  A.fi = Math.floor(A.t * 3); }
+  if (A.state === "drink") { A.row = has(ROW.drink) ? ROW.drink : ROW.mug; A.fi = Math.floor(A.t * 4); }
+  if (A.state === "type")  { A.row = ROW.type;  A.fi = Math.floor(A.t * 5); }
+  if (A.state === "react") { A.row = ROW.react; A.fi = A.emote; }
+  if (now > A.until) { A.t = 0; plan(A, now); }
+}
+
+/* ------------------------------------------------------------------ drawing */
+let CREW = null;
+
+function spawn(){
+  CREW = CAST.map((tag, i) => {
+    // start everyone on real floor, spread across the room so they do not all
+    // set off from the same tile
+    let c = null, n = 0;
+    while (!c && n++ < 500) {
+      const gx = Math.floor(rnd() * GW), gy = Math.floor(rnd() * GH);
+      if (free(gx, gy)) c = midOf(gx, gy);
+    }
+    c = c || [W / 2, H * 0.72];
+    return {tag, x: c[0], y: c[1], dir: "S", row: ROW.S, fi: 0, t: 0,
+            state: "idle", until: 0, path: null, pi: 0, seat: null, walked: 0, act: "…"};
+  });
+}
+
+function frame(now){
+  requestAnimationFrame(frame);
+  if (!S || !IMG.bg) return;
+  now /= 1000;
+  if (!CREW) { spawn(); CREW.forEach((A, i) => plan(A, now * 1000 + i * 400)); }
+  if (!frame.last) frame.last = now;
+  const dt = Math.min(0.05, now - frame.last); frame.last = now;
+  for (const A of CREW) step(A, dt, now * 1000);
+
+  cx.clearRect(0, 0, W, H);
+  cx.drawImage(IMG.bg, 0, 0);
+
+  const list = S.props.map(p => ({y: p.y, z: p.z, run: () => {
+    const im = IMG["a:" + p.a]; if (!im) return;
+    cx.save();
+    if (p.flip) { cx.translate(Math.round(p.x), 0); cx.scale(-1, 1); cx.translate(-Math.round(p.x), 0); }
+    cx.drawImage(im, Math.round(p.x - im.width / 2), Math.round(p.y - im.height));
+    cx.restore();
+  }}));
+
+  for (const A of CREW) {
+    const [sp, meta, rk] = frameOf(A, A.row, A.fi);
+    const k = K[A.tag] * rk;
+    const cw = Math.round(meta.w * k), ch = Math.round(meta.h * k);
+    const px = A.seat ? A.seat.x : A.x, py = A.seat ? A.seat.y : A.y;
+    // hang the frame from the middle of the torso, not the middle of the frame
+    const ox = Math.round((meta.ax !== undefined ? meta.ax : meta.w / 2) * k);
+    list.push({y: A.seat ? A.seat.sortY : A.y, z: (A.seat && A.seat.z) || 0, run: () => {
+      if (!sp) return;
+      if (!A.seat) {
+        cx.globalAlpha = .22; cx.fillStyle = "#000";
+        cx.beginPath(); cx.ellipse(px, py, cw * 0.32, cw * 0.14, 0, 0, 6.284); cx.fill();
+        cx.globalAlpha = 1;
+      }
+      cx.drawImage(sp, Math.round(px) - ox, Math.round(py - ch), cw, ch);
+    }});
+  }
+
+  list.sort((a, b) => (a.z - b.z) || (a.y - b.y)).forEach(o => o.run());
+
+  if (!frame.hudAt || now - frame.hudAt > 0.5) {
+    frame.hudAt = now;
+    document.getElementById("act").textContent =
+      CREW.map(A => A.tag + ": " + A.act).join("   ");
+  }
+}
+
+
+boot();
+</script></body></html>
