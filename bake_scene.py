@@ -27,6 +27,7 @@ ART = os.path.join(HERE, "art")
 OUT = os.path.join(HERE, "static", "office")
 LAYOUT = os.path.join(HERE, "layout.json")
 SEATS = os.path.join(HERE, "seats.json")
+WALK = os.path.join(HERE, "walk.json")
 
 CELL = 10                      # collision cell, in room pixels
 BODY = 1                       # cells of clearance kept around every obstacle.
@@ -60,6 +61,16 @@ def tune():
             else:
                 t[k] = v
     return t
+
+
+def walk_marks():
+    """Cells the editor forced open or forced shut, in grid coordinates."""
+    if not os.path.exists(WALK):
+        return {}
+    try:
+        return json.load(open(WALK))
+    except ValueError:
+        return {}
 
 
 def _meta():
@@ -119,6 +130,18 @@ def blocked_grid(items, m):
     # never get close enough for the shoulders to overlap the furniture
     grown = ndimage.binary_dilation(grid.astype(bool), np.ones((3, 3)),
                                     iterations=BODY).astype(np.uint8)
+
+    # ...and then whatever was painted by hand in the editor. Some of this the
+    # sprites cannot say: a rug is walkable and a table is not, and both are a
+    # flat shape on the floor. Painted last, so a hand-opened cell also gets to
+    # join the walkable region below instead of being cut off by it.
+    hand = walk_marks()
+    for gx, gy in hand.get("block", []):
+        if 0 <= gy < grown.shape[0] and 0 <= gx < grown.shape[1]:
+            grown[gy, gx] = 1
+    for gx, gy in hand.get("open", []):
+        if 0 <= gy < grown.shape[0] and 0 <= gx < grown.shape[1]:
+            grown[gy, gx] = 0
 
     # keep only the floor you can actually walk on: the pockets left between a
     # sofa and a rug are "free" cells the pathfinder can never reach, and a

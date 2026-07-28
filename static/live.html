@@ -57,6 +57,8 @@ async function boot(){
   // cycle is always a few pixels taller than the others, and picking it made
   // that character shorter than everyone else for the whole run
   for (const tag of CAST) K[tag] = STAND / S.chars[tag].base;
+  await bots();
+  setInterval(bots, 5000);
   fit(); addEventListener("resize", fit);
   requestAnimationFrame(frame);
 }
@@ -263,6 +265,95 @@ function step(A, dt, now){
   if (now > A.until) { A.t = 0; plan(A, now); }
 }
 
+/* -------------------------------------------------------------- name plates */
+/* Everyone in the room stands for one of the bots on this box, so each of them
+   carries that bot's state over their head. The list comes from the same
+   /api/status the dashboard reads, so a plate can never claim a bot is running
+   when the dashboard says it is off. */
+let BOTS = [], WHOSE = {};
+
+const STATE = {
+  running: {fa: "در حال کار", c: "#5ef08a"},
+  idle:    {fa: "آماده",      c: "#7cc4ff"},
+  off:     {fa: "خاموش",      c: "#6b5f85"},
+  error:   {fa: "خطا",        c: "#ff5f6b"},
+};
+
+/* 9x9 pixel glyphs, one row of the icon per string, so they stay pixel art at
+   any zoom instead of a smoothly drawn vector dot */
+const ICON = {
+  running: ["  X      ", "  XX     ", "  XXX    ", "  XXXX   ", "  XXXXX  ",
+            "  XXXX   ", "  XXX    ", "  XX     ", "  X      "],
+  idle:    ["         ", "   XXX   ", "  X   X  ", " X     X ", " X     X ",
+            " X     X ", "  X   X  ", "   XXX   ", "         "],
+  off:     ["    X    ", "  X X X  ", " X  X  X ", " X     X ", " X     X ",
+            "  X   X  ", "   XXX   ", "         ", "         "],
+  error:   ["    X    ", "    X    ", "    X    ", "    X    ", "    X    ",
+            "    X    ", "         ", "    X    ", "         "],
+};
+
+async function bots(){
+  try {
+    const d = await (await fetch("api/status", {cache: "no-store"})).json();
+    BOTS = d.bots || [];
+    // one bot per character, in a fixed order, so nobody swaps identity between
+    // polls; any character left over is simply somebody who works here
+    WHOSE = {};
+    CAST.forEach((tag, i) => { if (BOTS[i]) WHOSE[tag] = BOTS[i]; });
+  } catch (e) { /* the room keeps running without the dashboard */ }
+}
+
+function icon(g, x, y, kind, col){
+  const rows = ICON[kind] || ICON.idle;
+  g.fillStyle = col;
+  for (let r = 0; r < rows.length; r++)
+    for (let c = 0; c < rows[r].length; c++)
+      if (rows[r][c] === "X") g.fillRect(x + c, y + r, 1, 1);
+}
+
+/* Not ui-monospace: no monospace face on this machine draws Persian, so the
+   browser silently fell back to a cursive one and the descenders of گرز علی
+   were cut off by the border. */
+const FACE = 'Tahoma,"Noto Sans Arabic","Segoe UI",Arial,sans-serif';
+
+function plate(g, A, px, top){
+  const b = WHOSE[A.tag];
+  if (!b) return;
+  const st = STATE[b.state] || STATE.idle;
+  g.font = "bold 12px " + FACE;
+  const nw = g.measureText(b.fa).width;
+  g.font = "11px " + FACE;
+  const sw = g.measureText(st.fa).width;
+  const w = Math.round(Math.max(nw, sw + 15) + 20), h = 40, tail = 6;
+  const x = Math.round(px - w / 2), y = Math.round(top - h - tail - 5);
+
+  g.fillStyle = "#07050d";
+  g.fillRect(x, y, w, h);
+  g.fillStyle = "#b57bff";                       // a drawn border, not a stroke:
+  g.fillRect(x, y, w, 2); g.fillRect(x, y + h - 2, w, 2);        // a stroke lands
+  g.fillRect(x, y, 2, h); g.fillRect(x + w - 2, y, 2, h);        // on half pixels
+  // the tail, a pixel step per row, with the box's bottom edge opened under it
+  g.fillStyle = "#07050d"; g.fillRect(px - 4, y + h - 2, 9, 2);
+  for (let i = 0; i < tail; i++) {
+    const half = 5 - Math.round(i * 5 / tail);
+    g.fillStyle = "#07050d"; g.fillRect(px - half, y + h + i, half * 2 + 1, 1);
+    g.fillStyle = "#b57bff";
+    g.fillRect(px - half - 2, y + h + i, 2, 1); g.fillRect(px + half + 1, y + h + i, 2, 1);
+  }
+  g.fillRect(px - 1, y + h + tail, 3, 1);        // close the tip
+
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.font = "bold 12px " + FACE; g.fillStyle = "#ece5f7";
+  g.fillText(b.fa, px, y + 13);
+  // the icon sits on the right of the state, which is where a Persian line
+  // starts, so it reads as the bullet of that line and not as a stray mark
+  const sx = Math.round(px - (sw + 15) / 2);
+  g.font = "11px " + FACE; g.fillStyle = st.c;
+  g.fillText(st.fa, sx + sw / 2, y + 28);
+  icon(g, sx + Math.round(sw) + 5, y + 23, b.state, st.c);
+  g.textAlign = "left"; g.textBaseline = "alphabetic";
+}
+
 /* ------------------------------------------------------------------ drawing */
 let CREW = null;
 
@@ -301,11 +392,13 @@ function frame(now){
     cx.restore();
   }}));
 
+  const plates = [];
   for (const A of CREW) {
     const [sp, meta, rk] = frameOf(A, A.row, A.fi);
     const k = K[A.tag] * rk;
     const cw = Math.round(meta.w * k), ch = Math.round(meta.h * k);
     const px = A.seat ? A.seat.x : A.x, py = A.seat ? A.seat.y : A.y;
+    plates.push({A, px: Math.round(px), top: Math.round(py - ch)});
     // hang the frame from the middle of the torso, not the middle of the frame
     const ox = Math.round((meta.ax !== undefined ? meta.ax : meta.w / 2) * k);
     list.push({y: A.seat ? A.seat.sortY : A.y, z: (A.seat && A.seat.z) || 0, run: () => {
@@ -320,6 +413,9 @@ function frame(now){
   }
 
   list.sort((a, b) => (a.z - b.z) || (a.y - b.y)).forEach(o => o.run());
+  // after everything else: a name plate belongs to the viewer, not to the room,
+  // so a desk in front of somebody must not eat half of it
+  for (const p of plates) plate(cx, p.A, p.px, p.top);
 
   if (!frame.hudAt || now - frame.hudAt > 0.5) {
     frame.hudAt = now;

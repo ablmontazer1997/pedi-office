@@ -306,6 +306,15 @@ def public_status():
 # layout (layout.json), then asks for a bake, which is just build_room.build().
 LAYOUT_FILE = os.path.join(HERE, "layout.json")
 SEATS_FILE = os.path.join(HERE, "seats.json")
+WALK_FILE = os.path.join(HERE, "walk.json")
+
+
+def rebake():
+    """Rebuild scene.json from whatever is now on disk."""
+    import importlib
+    import bake_scene
+    importlib.reload(bake_scene)
+    bake_scene.build()
 
 
 def _room():
@@ -382,10 +391,7 @@ def ed_bake(req):
     if isinstance(req, dict) and isinstance(req.get("layout"), list):
         ed_layout(req["layout"])
     build_room.build()
-    import importlib
-    import bake_scene
-    importlib.reload(bake_scene)
-    bake_scene.build()
+    rebake()
     out = os.path.join(STATIC, "office", "room_base.png")
     return {"ok": True, "at": time.strftime("%H:%M:%S", time.localtime(os.path.getmtime(out)))}
 
@@ -404,15 +410,28 @@ def ed_seats(req):
         json.dump(cfg, f, indent=1)
     if isinstance(req.get("layout"), list):
         ed_layout(req["layout"])
-    import importlib
-    import bake_scene
-    importlib.reload(bake_scene)
-    bake_scene.build()
+    rebake()
     return {"ok": True}
 
 
+def ed_walk(req):
+    """Save the cells painted open or shut on the floor, then rebuild.
+
+    The grid is worked out from the sprites, and some of it the sprites cannot
+    say: a rug is walkable and a low table is not, and both are a flat shape
+    lying on the floor."""
+    marks = req.get("walk")
+    if not isinstance(marks, dict):
+        return {"ok": False, "msg": "no walk in body"}
+    keep = {k: [[int(a), int(b)] for a, b in marks.get(k, [])] for k in ("block", "open")}
+    with open(WALK_FILE, "w") as f:
+        json.dump(keep, f)
+    rebake()
+    return {"ok": True, "msg": "%d shut · %d open" % (len(keep["block"]), len(keep["open"]))}
+
+
 EDIT_POST = {"layout": ed_layout, "asset": ed_asset, "asset-size": ed_size,
-             "asset-fit": ed_fit, "bake": ed_bake, "seats": ed_seats}
+             "asset-fit": ed_fit, "bake": ed_bake, "seats": ed_seats, "walk": ed_walk}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -509,6 +528,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/seats":
             import bake_scene
             self._json(bake_scene.tune())
+            return
+        if path == "/api/walk":
+            import bake_scene
+            m = bake_scene.walk_marks()
+            self._json({"block": m.get("block", []), "open": m.get("open", [])})
             return
         if path == "/api/layout":
             self._json(json.load(open(LAYOUT_FILE)) if os.path.exists(LAYOUT_FILE) else [])

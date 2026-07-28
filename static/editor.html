@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RADE OFFICE — layout editor</title>
+<title>RADE OFFICE — editor</title>
 <style>
 :root{--bg:#0a0810;--panel:#15111f;--line:#2f2646;--ink:#ece5f7;--dim:#8f82ab;--violet:#b57bff;--ok:#5ef08a;--err:#ff5f6b}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -10,25 +10,34 @@ body{display:grid;grid-template-columns:1fr 250px}
 #cv{position:absolute;left:0;top:0;image-rendering:pixelated;cursor:crosshair}
 aside{background:var(--panel);border-left:2px solid var(--line);display:flex;flex-direction:column;min-height:0}
 h2{font-size:12px;letter-spacing:2px;color:var(--violet);padding:11px 13px;border-bottom:1px solid var(--line)}
+#modes{display:flex;border-bottom:1px solid var(--line)}
+#modes button{border:none;border-radius:0;border-right:1px solid var(--line);background:#120e1d;
+  color:var(--dim);padding:11px 4px;letter-spacing:1px}
+#modes button.on{background:#2a1c4a;color:#fff}
+.panel{display:none;flex:1;min-height:0;flex-direction:column}
+.panel.on{display:flex}
 #pal{flex:1;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:9px}
 .card{border:2px solid var(--line);border-radius:6px;background:#1c1629;padding:5px;text-align:center;cursor:pointer}
 .card.on{border-color:var(--violet)}
 .card img{width:100%;height:56px;object-fit:contain;image-rendering:pixelated;display:block}
 .card b{display:block;font-size:9px;color:var(--dim);font-weight:400;margin-top:3px;overflow:hidden;text-overflow:ellipsis}
-#tools{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
-.row{display:flex;gap:7px;align-items:center}
-.row label{color:var(--dim);width:52px;font-size:11px}
-input[type=range]{flex:1}
+.tools{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.body{padding:11px 12px;overflow:auto;flex:1}
+.row{display:flex;gap:7px;align-items:center;margin:6px 0}
+.row label{color:var(--dim);width:80px;font-size:11px}
+.row b{font-weight:400;color:var(--ink);min-width:38px;text-align:right;font-size:11px}
+input[type=range]{flex:1;width:100%}
 button{font:inherit;font-size:11px;letter-spacing:1px;color:var(--ink);background:#221836;border:2px solid #5a3b86;
   border-radius:5px;padding:8px 6px;cursor:pointer;flex:1}
 button:hover{filter:brightness(1.4)}
 button.go{border-color:#2f7a45;background:#12301d}
+button.on{background:#3b2a6b;border-color:#7d5fd0;color:#fff}
 #drop{border:2px dashed var(--line);border-radius:6px;padding:10px;text-align:center;color:var(--dim);font-size:11px}
 #drop.hot{border-color:var(--violet);color:var(--ink)}
 #msg{padding:7px 12px;font-size:11px;color:var(--dim);border-top:1px solid var(--line);min-height:30px}
+small{display:block;color:#6b5f85;font-size:10px;line-height:1.6;margin-top:9px}
 #hint{position:absolute;left:10px;top:10px;background:rgba(12,9,20,.85);border:1px solid var(--line);
   border-radius:5px;padding:7px 10px;font-size:11px;color:var(--dim);line-height:1.7;pointer-events:none}
-/* the baked room, shown right here so there is no second page to go and find */
 #peek{position:absolute;inset:0;background:rgba(6,4,12,.96);display:none;place-items:center;
   flex-direction:column;gap:10px;padding:16px;z-index:5;cursor:zoom-out}
 #peek.on{display:flex}
@@ -39,23 +48,57 @@ button.go{border-color:#2f7a45;background:#12301d}
 
 <div id="stage">
   <canvas id="cv"></canvas>
-  <div id="hint">
-    click a piece on the right, then click the floor to drop it<br>
-    drag to move · wheel to resize · <b>F</b> flip · <b>Del</b> remove · <b>Esc</b> deselect<br>
-    <b>]</b> / <b>[</b> layer up · down, to put a piece over or under another
-  </div>
+  <div id="hint"></div>
   <div id="peek"><img id="peekimg" alt="baked room"><div id="peekmsg"></div></div>
 </div>
 
 <aside>
-  <h2>ASSETS</h2>
-  <div id="pal"></div>
-  <div id="tools">
-    <div id="drop">drop a PNG here to add it</div>
-    <div class="row"><label>size</label><input id="size" type="range" min="20" max="600" value="160"></div>
-    <div class="row"><label>skew</label><button id="fit" style="flex:1">snap to grid · on/off</button></div>
-    <div class="row"><label>layer</label><button id="up">↑ front</button><button id="down">↓ back</button></div>
-    <div class="row"><button id="save" class="go">SAVE</button><button id="bake">BAKE</button></div>
+  <div id="modes">
+    <button id="m-furniture" class="on">FURNITURE</button>
+    <button id="m-seats">SEATS</button>
+    <button id="m-walk">WALK</button>
+  </div>
+
+  <div class="panel on" id="p-furniture">
+    <div id="pal"></div>
+    <div class="tools">
+      <div id="drop">drop a PNG here to add it</div>
+      <div class="row"><label>size</label><input id="size" type="range" min="20" max="600" value="160"></div>
+      <div class="row"><label>skew</label><button id="fit">snap to grid · on/off</button></div>
+      <div class="row"><label>layer</label><button id="up">↑ front</button><button id="down">↓ back</button></div>
+    </div>
+  </div>
+
+  <div class="panel" id="p-seats">
+    <div class="body">
+      <div class="row"><label>standing</label><b id="v-stand"></b></div>
+      <input type="range" id="s-stand" min="90" max="200">
+      <div class="row"><label>at a desk</label><b id="v-r1"></b></div>
+      <input type="range" id="s-r1" min="60" max="160">
+      <div class="row"><label>on the sofa</label><b id="v-r13"></b></div>
+      <input type="range" id="s-r13" min="60" max="160">
+      <small>Drag a typist to set where everyone sits at a desk — it is one
+      offset for every desk, so they all move together. The person on the sofa
+      has their own. Arrow keys nudge the last one you touched by a pixel.
+      Chairs are furniture: move them in FURNITURE.</small>
+    </div>
+  </div>
+
+  <div class="panel" id="p-walk">
+    <div class="body">
+      <div class="row"><button id="w-block" class="on">block</button><button id="w-open">open</button></div>
+      <div class="row"><label>brush</label><b id="v-brush"></b></div>
+      <input type="range" id="s-brush" min="1" max="8" value="2">
+      <div class="row"><button id="w-clear">forget my painting</button></div>
+      <small>Red is floor nobody may stand on. Paint to shut a gap or to open
+      one the furniture closed by accident — a rug is walkable and a low table
+      is not, and the sprites cannot tell them apart. What you paint survives
+      the next bake; everything else is worked out from the furniture again.</small>
+    </div>
+  </div>
+
+  <div class="tools">
+    <div class="row"><button id="save" class="go">SAVE</button><button id="bake">SAVE &amp; BAKE</button></div>
   </div>
   <div id="msg"></div>
 </aside>
@@ -67,18 +110,53 @@ const K = new URLSearchParams(location.search).get("k") || "";
 const q = p => p + (p.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(K);
 
 let META = null, SCALE = 1, LIB = [], IMG = {}, LAYOUT = [], pick = null, sel = -1, drag = null;
+let SCENE = null, T = null, WALK = {block: [], open: []}, MODE = "furniture";
+let PICK2 = "desk", PAINT = "block", BRUSH = 2, painting = null;
+const WHO = "rade";                       // one body is enough to judge a seat by
+const ROW = {desk: "r1", sofa: "r13"};
+
+const HINT = {
+  furniture: "click a piece on the right, then click the floor to drop it<br>" +
+             "drag to move · wheel to resize · <b>F</b> flip · <b>Del</b> remove · <b>Esc</b> deselect<br>" +
+             "<b>]</b> / <b>[</b> layer up · down, to put a piece over or under another",
+  seats: "drag the person at a desk, or the one on the sofa<br>" +
+         "arrow keys nudge by a pixel · the sliders set how big they are",
+  walk: "drag on the floor to paint · red is blocked<br>" +
+        "<b>block</b> shuts a cell, <b>open</b> forces one walkable",
+};
 
 function msg(t, bad){ $("msg").textContent = t; $("msg").style.color = bad ? "var(--err)" : "var(--dim)"; }
+const img = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
 
 async function boot(){
   META = await (await fetch("office/room_meta.json?v=" + Date.now())).json();
   IMG.bg = await img("office/room_bg.png?v=" + Date.now());
   LIB = await (await fetch(q("api/assets"))).json();
   LAYOUT = await (await fetch(q("api/layout"))).json();
+  SCENE = await (await fetch("office/scene.json?v=" + Date.now())).json();
+  T = await (await fetch(q("api/seats"))).json();
+  WALK = await (await fetch(q("api/walk"))).json();
+  WALK.block = WALK.block || []; WALK.open = WALK.open || [];
   await Promise.all(LIB.map(async a => { IMG[a.name] = await img("office/assets/" + a.name + ".png?v=" + Date.now()); }));
-  palette(); fit(); draw();
+  await Promise.all(["r1", "r13"].map(async r => {
+    for (const f of SCENE.chars[WHO].rows[r].f)
+      IMG["c:" + f.f] = await img("office/chars/" + WHO + "/" + f.f + ".png");
+  }));
+  palette(); bindSeats(); bindWalk(); mode("furniture"); fit(); draw();
 }
-const img = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; });
+
+/* ------------------------------------------------------------------- modes */
+function mode(m){
+  MODE = m;
+  for (const k of ["furniture", "seats", "walk"]) {
+    $("m-" + k).classList.toggle("on", k === m);
+    $("p-" + k).classList.toggle("on", k === m);
+  }
+  $("hint").innerHTML = HINT[m];
+  sel = -1; pick = null;
+  draw();
+}
+["furniture", "seats", "walk"].forEach(m => $("m-" + m).onclick = () => mode(m));
 
 function palette(){
   $("pal").innerHTML = LIB.map(a =>
@@ -105,23 +183,124 @@ addEventListener("resize", () => { fit(); draw(); });
 const order = () => LAYOUT.map((it, i) => ({it, i}))
   .sort((a, b) => (a.it.z || 0) - (b.it.z || 0) || a.it.y - b.it.y || a.i - b.i);
 
+/* the same arithmetic bake_scene does, off the layout rather than the last
+   bake, so a desk dragged just now already carries its typist */
+function seats(){
+  const out = LAYOUT.filter(it => it.asset === "desk").map(d => ({kind: "desk",
+    x: d.x + T.desk.sit[0], y: d.y + T.desk.sit[1], sortY: d.y - 1, z: d.z || 0}));
+  const sofa = LAYOUT.find(it => it.asset === "sofa");
+  if (sofa) out.push({kind: "sofa", x: sofa.x + T.sofa.sit[0], y: sofa.y + T.sofa.sit[1],
+                      sortY: sofa.y + 2, z: sofa.z || 0});
+  return out;
+}
+
+/* row.k already carries the size the last bake used, so undo it and apply the
+   slider instead, or the preview lags one bake behind the numbers */
+function drawn(kind){
+  const row = SCENE.chars[WHO].rows[ROW[kind]], f = row.f[0];
+  const baked = (T._baked && T._baked[ROW[kind]]) || 1;
+  const k = (T.stand / SCENE.chars[WHO].base) * row.k * ((T.rowScale[ROW[kind]] || 1) / baked);
+  return {im: IMG["c:" + f.f], f, k};
+}
+
 function draw(){
   cx.imageSmoothingEnabled = false;
   cx.clearRect(0, 0, META.w, META.h);
   cx.drawImage(IMG.bg, 0, 0);
-  order().forEach(({it, i}) => {
+
+  const list = order().map(({it, i}) => ({y: it.y, z: it.z || 0, run: () => {
     const sp = IMG[it.asset]; if (!sp) return;
     const x = Math.round(it.x - sp.width / 2), y = Math.round(it.y - sp.height);
     if (it.flip){ cx.save(); cx.translate(x + sp.width, y); cx.scale(-1, 1); cx.drawImage(sp, 0, 0); cx.restore(); }
     else cx.drawImage(sp, x, y);
-    if (i === sel){
+    if (MODE === "furniture" && i === sel){
       cx.strokeStyle = "#b57bff"; cx.lineWidth = 2;
       cx.strokeRect(x - 1, y - 1, sp.width + 2, sp.height + 2);
       cx.fillStyle = "#b57bff"; cx.fillRect(it.x - 3, it.y - 3, 6, 6);   // its spot on the floor
     }
-  });
+  }}));
+
+  if (MODE === "seats") for (const s of seats()) {
+    const b = drawn(s.kind);
+    const w = Math.round(b.f.w * b.k), h = Math.round(b.f.h * b.k);
+    const ox = Math.round((b.f.ax !== undefined ? b.f.ax : b.f.w / 2) * b.k);
+    list.push({y: s.sortY, z: s.z, run: () => {
+      if (b.im) cx.drawImage(b.im, Math.round(s.x) - ox, Math.round(s.y - h), w, h);
+      if (s.kind === PICK2){
+        cx.strokeStyle = "#b57bff"; cx.lineWidth = 1;
+        cx.strokeRect(Math.round(s.x) - ox + .5, Math.round(s.y - h) + .5, w - 1, h - 1);
+      }
+    }});
+  }
+
+  list.sort((a, b) => (a.z - b.z) || (a.y - b.y)).forEach(o => o.run());
+  if (MODE === "walk") floor();
 }
 
+/* ------------------------------------------------------------------- walk */
+/* the grid the last bake worked out, with what is painted since laid over it,
+   so the brush answers straight away instead of after a rebuild */
+function floor(){
+  const C = SCENE.cell, g = SCENE.grid;
+  const shut = new Set(WALK.block.map(c => c[0] + "," + c[1]));
+  const open = new Set(WALK.open.map(c => c[0] + "," + c[1]));
+  for (let gy = 0; gy < g.length; gy++)
+    for (let gx = 0; gx < g[gy].length; gx++) {
+      const k = gx + "," + gy;
+      const blocked = open.has(k) ? false : shut.has(k) ? true : g[gy][gx] === "1";
+      cx.fillStyle = blocked ? "rgba(255,60,80,.20)" : "rgba(80,240,150,.09)";
+      cx.fillRect(gx * C, gy * C, C - 1, C - 1);
+      // a painted cell is marked, so you can tell your own decisions apart
+      // from what the furniture worked out
+      if (shut.has(k) || open.has(k)) {
+        cx.fillStyle = shut.has(k) ? "rgba(255,80,100,.85)" : "rgba(110,255,175,.8)";
+        cx.fillRect(gx * C + 3, gy * C + 3, 3, 3);
+      }
+    }
+}
+
+function paintAt(p){
+  const C = SCENE.cell;
+  const gx = Math.floor(p.x / C), gy = Math.floor(p.y / C);
+  const r = BRUSH - 1;
+  for (let dy = -r; dy <= r; dy++)
+    for (let dx = -r; dx <= r; dx++) {
+      const x = gx + dx, y = gy + dy;
+      if (y < 0 || y >= SCENE.grid.length || x < 0 || x >= SCENE.grid[0].length) continue;
+      const drop = c => c.filter(v => v[0] !== x || v[1] !== y);
+      WALK.block = drop(WALK.block); WALK.open = drop(WALK.open);
+      WALK[PAINT].push([x, y]);
+    }
+  draw();
+}
+
+function bindWalk(){
+  $("w-block").onclick = () => { PAINT = "block"; syncWalk(); };
+  $("w-open").onclick = () => { PAINT = "open"; syncWalk(); };
+  $("s-brush").oninput = e => { BRUSH = +e.target.value; $("v-brush").textContent = BRUSH; };
+  $("v-brush").textContent = BRUSH;
+  $("w-clear").onclick = () => { WALK = {block: [], open: []}; draw(); msg("painting cleared · save to keep it"); };
+  syncWalk();
+}
+function syncWalk(){
+  $("w-block").classList.toggle("on", PAINT === "block");
+  $("w-open").classList.toggle("on", PAINT === "open");
+}
+
+/* ------------------------------------------------------------------ seats */
+function slider(id, get, set, fmt){
+  const s = $("s-" + id), v = $("v-" + id);
+  s.value = get(); v.textContent = fmt(get());
+  s.oninput = () => { set(+s.value); v.textContent = fmt(+s.value); draw(); };
+}
+function bindSeats(){
+  T._baked = {r1: T.rowScale.r1 || 1, r13: T.rowScale.r13 || 1};
+  slider("stand", () => T.stand, v => T.stand = v, v => v + "px");
+  slider("r1", () => Math.round((T.rowScale.r1 || 1) * 100), v => T.rowScale.r1 = v / 100, v => v + "%");
+  slider("r13", () => Math.round((T.rowScale.r13 || 1) * 100), v => T.rowScale.r13 = v / 100, v => v + "%");
+}
+
+/* ------------------------------------------------------------------ input */
 const at = e => {
   const r = cv.getBoundingClientRect();
   return {x: (e.clientX - r.left) / SCALE, y: (e.clientY - r.top) / SCALE};
@@ -144,6 +323,18 @@ function hit(p){
 
 cv.onmousedown = e => {
   const p = at(e);
+  if (MODE === "walk"){ painting = true; paintAt(p); return; }
+  if (MODE === "seats"){
+    let best = null, bd = 1e9;
+    for (const s of seats()){
+      const d = Math.hypot(s.x - p.x, s.y - 40 - p.y);   // by the chest, not the shoes
+      if (d < bd){ bd = d; best = s; }
+    }
+    if (!best || bd > 90) return;
+    PICK2 = best.kind;
+    drag = {seat: best.kind, x: p.x, y: p.y, from: T[best.kind].sit.slice()};
+    draw(); return;
+  }
   if (pick){
     LAYOUT.push({asset: pick, x: Math.round(p.x), y: Math.round(p.y)});
     sel = LAYOUT.length - 1; pick = null;
@@ -158,16 +349,22 @@ cv.onmousedown = e => {
   draw();
 };
 addEventListener("mousemove", e => {
-  if (drag == null || sel < 0) return;
+  if (painting){ paintAt(at(e)); return; }
+  if (!drag) return;
   const p = at(e);
+  if (drag.seat){
+    T[drag.seat].sit = [Math.round(drag.from[0] + p.x - drag.x), Math.round(drag.from[1] + p.y - drag.y)];
+    draw(); return;
+  }
+  if (sel < 0) return;
   LAYOUT[sel].x = Math.round(p.x + drag.dx);
   LAYOUT[sel].y = Math.round(p.y + drag.dy);
   draw();
 });
-addEventListener("mouseup", () => { drag = null; });
+addEventListener("mouseup", () => { drag = null; painting = null; });
 
 cv.onwheel = e => {
-  if (sel < 0) return;
+  if (MODE !== "furniture" || sel < 0) return;
   e.preventDefault();
   const a = LIB.find(x => x.name === LAYOUT[sel].asset);
   resize(a, Math.max(20, Math.min(600, Math.round(a.width * (e.deltaY < 0 ? 1.06 : 0.94)))));
@@ -198,17 +395,22 @@ $("up").onclick = () => layer(1);
 $("down").onclick = () => layer(-1);
 
 addEventListener("keydown", e => {
+  const step = e.shiftKey ? 10 : 1;
+  const d = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
+  if (MODE === "seats"){
+    if (!d) return;
+    e.preventDefault();
+    T[PICK2].sit = [T[PICK2].sit[0] + d[0] * step, T[PICK2].sit[1] + d[1] * step];
+    draw(); return;
+  }
+  if (MODE !== "furniture") return;
   if (e.key === "Escape"){ pick = null; sel = -1; $("pal").querySelectorAll(".card").forEach(o => o.classList.remove("on")); draw(); }
   if (sel < 0) return;
   if (e.key === "Delete" || e.key === "Backspace"){ LAYOUT.splice(sel, 1); sel = -1; draw(); }
   if (e.key === "f" || e.key === "F"){ LAYOUT[sel].flip = !LAYOUT[sel].flip; draw(); }
   if (e.key === "PageUp" || e.key === "]"){ e.preventDefault(); layer(1); }
   if (e.key === "PageDown" || e.key === "["){ e.preventDefault(); layer(-1); }
-  const step = e.shiftKey ? 10 : 1;
-  if (e.key === "ArrowLeft"){ LAYOUT[sel].x -= step; draw(); }
-  if (e.key === "ArrowRight"){ LAYOUT[sel].x += step; draw(); }
-  if (e.key === "ArrowUp"){ LAYOUT[sel].y -= step; draw(); }
-  if (e.key === "ArrowDown"){ LAYOUT[sel].y += step; draw(); }
+  if (d){ LAYOUT[sel].x += d[0] * step; LAYOUT[sel].y += d[1] * step; draw(); }
 });
 
 async function post(path, body){
@@ -219,17 +421,30 @@ async function post(path, body){
   return d;
 }
 
-$("save").onclick = async () => { await post("api/layout", LAYOUT); msg("layout saved"); };
+/* One SAVE for the whole panel: three files, whichever tab you were on, so
+   nothing is quietly left behind on the tab you did not press it in. */
+async function saveAll(){
+  const seatsOut = JSON.parse(JSON.stringify(T)); delete seatsOut._baked;
+  await post("api/layout", LAYOUT);
+  await post("api/walk", {walk: WALK});
+  await post("api/seats", {seats: seatsOut});
+  T._baked = {r1: T.rowScale.r1 || 1, r13: T.rowScale.r13 || 1};
+  SCENE = await (await fetch("office/scene.json?v=" + Date.now())).json();
+}
+
+$("save").onclick = async () => { msg("saving…"); await saveAll(); msg("saved · scene rebuilt"); draw(); };
 $("bake").onclick = async () => {
   msg("baking…");
-  // send the layout with it: baking what is on screen beats baking whatever was
-  // last saved, which is what made a bake look like it did nothing
+  await saveAll();
   const d = await post("api/bake", {layout: LAYOUT});
   if (!d.ok) return;
+  SCENE = await (await fetch("office/scene.json?v=" + Date.now())).json();
+  IMG.bg = await img("office/room_bg.png?v=" + Date.now());
+  draw();
   msg("baked " + (d.at || ""));
   $("peekimg").src = "office/room_base.png?v=" + Date.now();
   $("peekmsg").innerHTML = "baked " + (d.at || "") +
-    " · click to close · <a href='room.html?k=" + encodeURIComponent(K) + "' target='_blank'>open the room page</a>";
+    " · click to close · <a href='live.html' target='_blank'>open the room</a>";
   $("peek").classList.add("on");
 };
 $("peek").onclick = e => { if (e.target.tagName !== "A") $("peek").classList.remove("on"); };
