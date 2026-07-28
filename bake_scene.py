@@ -28,13 +28,17 @@ OUT = os.path.join(HERE, "static", "office")
 LAYOUT = os.path.join(HERE, "layout.json")
 
 CELL = 10                      # collision cell, in room pixels
-FOOT = 0.62                    # bottom fraction of a sprite that stands on the floor.
-                               # A desk sprite is 151 px tall but the monitor and
-                               # the plant on it are drawn *above* the floor, not
-                               # on it: only the body of the desk down to the feet
-                               # is ground the character may not walk into.
-MARGIN = 26                    # keep the character off the very edge of the floor
-CHAIR_AT = (-46, -46)          # where a desk's chair stands, relative to the desk
+BODY = 1                       # cells of clearance kept around every obstacle.
+                               # The pathfinder only ever tests the cell under
+                               # the feet, but a character is about seven cells
+                               # wide, so without this his shoulder walks
+                               # straight through the side of a desk.
+MARGIN = 26                    # keep the character off the near edge of the floor
+WALL = 54                      # and further off the back walls: the wall is part
+                               # of the backdrop, so anyone who gets that high is
+                               # drawn on top of it and appears to stand in the
+                               # window
+CHAIR_AT = (-52, -60)          # where a desk's chair stands, relative to the desk
 
 
 def _meta():
@@ -55,15 +59,31 @@ def blocked_grid(items, m):
     for gy in range(gh):
         for gx in range(gw):
             x, y = gx * CELL + CELL // 2, gy * CELL + CELL // 2
-            if y < _base_y(m, x) + MARGIN or y > H - MARGIN or x < MARGIN or x > W - MARGIN:
+            if y < _base_y(m, x) + WALL or y > H - MARGIN or x < MARGIN or x > W - MARGIN:
                 grid[gy, gx] = 1
 
+    ratio = m["th"] / m["tw"]
     for it in items:
         sp = Image.open(os.path.join(OUT, "assets", it["asset"] + ".png")).convert("RGBA")
         if it.get("flip"):
             sp = sp.transpose(Image.FLIP_LEFT_RIGHT)
         a = np.asarray(sp)[:, :, 3] > 40
-        y0 = int(sp.height * (1 - FOOT))
+        cols = np.nonzero(a.any(0))[0]
+        if not len(cols):
+            continue
+        # An isometric sprite is its floor tile swept upwards, so the ground it
+        # stands on is the diamond at the bottom: as tall as the sprite is wide,
+        # squashed by the room's own tile ratio. Taking a fixed fraction of the
+        # sprite instead treated a monitor as if it were floor, and the desk's
+        # real footprint as if it were air.
+        span = cols[-1] - cols[0] + 1
+        diamond = sp.height - int(round(span * ratio)) - 4
+        # ...and then a little more. A desk is only 74 px of floor but 151 px of
+        # picture, so someone standing just behind its diamond is buried up to
+        # the neck and reads as walking through it. Blocking the lower two
+        # thirds of the picture as well keeps people out of the strip a tall
+        # object hides.
+        y0 = max(0, min(diamond, int(sp.height * 0.38)))
         left = round(it["x"] - sp.width / 2)
         top = round(it["y"] - sp.height)
         ys, xs = np.nonzero(a[y0:])
@@ -73,14 +93,11 @@ def blocked_grid(items, m):
             if 0 <= cy < gh and 0 <= cx < gw:
                 grid[cy, cx] = 1
 
-    # grow every obstacle by one cell: standing with a toe inside a desk reads as
-    # walking through it, because the desk sprite is tall and covers him
-    # two cells of clearance: the sprite is about five cells wide, so one cell
-    # still let his shoulder sit inside a desk
-    grown = grid.copy()
-    for dy in (-1, 0, 1):
-        for dx in (-1, 0, 1):
-            grown |= np.roll(np.roll(grid, dy, 0), dx, 1)
+    # every obstacle is inflated by half a body, which is the standard way to
+    # plan for something wider than the cell it is tracked in: the feet then
+    # never get close enough for the shoulders to overlap the furniture
+    grown = ndimage.binary_dilation(grid.astype(bool), np.ones((3, 3)),
+                                    iterations=BODY).astype(np.uint8)
 
     # keep only the floor you can actually walk on: the pockets left between a
     # sofa and a rug are "free" cells the pathfinder can never reach, and a
@@ -115,13 +132,13 @@ def spots(items, m):
             # covers them from the waist down
             cx_, cy_ = x + CHAIR_AT[0], y + CHAIR_AT[1]
             out["desks"].append({"walk": {"x": x - 96, "y": y + 62},
-                                 "sit": {"x": cx_, "y": cy_ + 10, "sortY": cy_ + 1}})
+                                 "sit": {"x": cx_, "y": cy_ + 8, "sortY": cy_ + 1}})
         elif a == "sofa" and out["sofa"] is None:
             # the coffee table sits right against the front of the sofa, so the
             # only floor next to it is off its right arm: seat him on the right
             # cushion too, or he crosses the whole sofa in one frame
             out["sofa"] = {"walk": {"x": x + 176, "y": y + 6},
-                           "sit": {"x": x + 55, "y": y - 26, "sortY": y + 2,
+                           "sit": {"x": x + 40, "y": y - 46, "sortY": y + 2,
                                    "z": it.get("z", 0)}}
         elif a.startswith("coffee") and out["coffee"] is None:
             # `coffee-frame` is the neon sign on the wall, not the counter: stand
