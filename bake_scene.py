@@ -38,7 +38,7 @@ WALL = 54                      # and further off the back walls: the wall is par
                                # of the backdrop, so anyone who gets that high is
                                # drawn on top of it and appears to stand in the
                                # window
-CHAIR_AT = (-52, -60)          # where a desk's chair stands, relative to the desk
+CHAIR_AT = (-46, -46)          # where a desk's chair stands, relative to the desk
 
 
 def _meta():
@@ -138,7 +138,7 @@ def spots(items, m):
             # only floor next to it is off its right arm: seat him on the right
             # cushion too, or he crosses the whole sofa in one frame
             out["sofa"] = {"walk": {"x": x + 176, "y": y + 6},
-                           "sit": {"x": x + 40, "y": y - 46, "sortY": y + 2,
+                           "sit": {"x": x + 34, "y": y - 58, "sortY": y + 2,
                                    "z": it.get("z", 0)}}
         elif a.startswith("coffee") and out["coffee"] is None:
             # `coffee-frame` is the neon sign on the wall, not the counter: stand
