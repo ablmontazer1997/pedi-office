@@ -173,13 +173,6 @@ def build():
 # The pieces themselves are prepared by assets.py: measured, sheared onto the
 # room's grid and saved ready to paste.
 LAYOUT = os.path.join(HERE, "layout.json")
-SEAT_H = 178           # seated height here, so the head clears the desk top
-SEAT_BACK = (-46, 24)  # one tile behind the desk, clear of its monitor
-
-
-def seated(tag, frame):
-    c = Image.open(os.path.join(ART, "chars", tag, frame + ".png")).convert("RGBA")
-    return c.resize((round(c.width * SEAT_H / c.height), SEAT_H), Image.LANCZOS)
 
 
 def props(im):
@@ -194,12 +187,9 @@ def props(im):
         # z is the editor's layer override; how far down the piece stands decides
         # the rest, which is what depth on a floor means
         z = it.get("z", 0)
-        items.append((z, it["y"], i, sp, it["x"], 0))
-        for who in it.get("seat", []):
-            c = seated(*who)
-            items.append((z, it["y"] - 1, i, c, it["x"] + SEAT_BACK[0], SEAT_BACK[1]))
-    for _, y, _, sp, x, dy in sorted(items, key=lambda t: t[:3]):
-        im.alpha_composite(sp, (round(x - sp.width / 2), round(y - dy - sp.height)))
+        items.append((z, it["y"], i, sp, it["x"]))
+    for _, y, _, sp, x in sorted(items, key=lambda t: t[:3]):
+        im.alpha_composite(sp, (round(x - sp.width / 2), round(y - sp.height)))
 
 
 

@@ -368,11 +368,20 @@ def ed_fit(req):
 
 def ed_bake(req):
     """Bake what is on screen, not what was last saved — pressing BAKE without
-    pressing SAVE first used to quietly rebuild the old room."""
+    pressing SAVE first used to quietly rebuild the old room.
+
+    Two things are baked, because the room is drawn twice: build_room paints the
+    still picture the editor previews, and bake_scene writes the scene.json the
+    live room walks people around in. Baking only the first left furniture moved
+    on the editor's canvas and standing where it was for everybody else."""
     _, build_room = _room()
     if isinstance(req, dict) and isinstance(req.get("layout"), list):
         ed_layout(req["layout"])
     build_room.build()
+    import importlib
+    import bake_scene
+    importlib.reload(bake_scene)
+    bake_scene.build()
     out = os.path.join(STATIC, "office", "room_base.png")
     return {"ok": True, "at": time.strftime("%H:%M:%S", time.localtime(os.path.getmtime(out)))}
 
