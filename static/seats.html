@@ -27,11 +27,11 @@
 <div id="side">
   <h2>WHAT AM I MOVING</h2>
   <div class="pick">
-    <button id="p-desk" class="on">desk</button>
+    <button id="p-chair" class="on">chairs</button>
+    <button id="p-desk">bodies</button>
     <button id="p-sofa">sofa</button>
   </div>
-  <small>Drag anyone in the room to move that seat. Arrow keys nudge by one
-  pixel. Every desk moves together — they share one offset.</small>
+  <small id="hint"></small>
 
   <h2>SIZE</h2>
   <div class="row"><label>standing</label><b id="v-stand"></b></div>
@@ -41,17 +41,11 @@
   <div class="row"><label>on the sofa</label><b id="v-r13"></b></div>
   <input type="range" id="s-r13" min="60" max="150">
 
-  <h2>CHAIR</h2>
-  <div class="row"><label>across</label><b id="v-cx"></b></div>
-  <input type="range" id="s-cx" min="-120" max="40">
-  <div class="row"><label>back</label><b id="v-cy"></b></div>
-  <input type="range" id="s-cy" min="-140" max="20">
-
   <h2></h2>
   <button id="save" style="width:100%">SAVE &amp; REBAKE</button>
   <div id="msg"></div>
-  <small>Saving rewrites seats.json and rebuilds scene.json, so
-  <b>live.html</b> shows it on the next reload.</small>
+  <small>Saving rewrites seats.json and the chairs in layout.json, then rebuilds
+  scene.json, so <b>live.html</b> shows it on the next reload.</small>
 </div>
 <div id="wrap"><canvas id="cv"></canvas></div>
 <script>
@@ -64,13 +58,14 @@ const IMG = {}, load = (k, src) => new Promise(res => {
   const i = new Image(); i.onload = () => { IMG[k] = i; res(); }; i.onerror = () => res(); i.src = src;
 });
 
-let S = null, W = 0, H = 0, SCALE = 1, T = null, PICK = "desk";
+let S = null, W = 0, H = 0, SCALE = 1, T = null, L = null, PICK = "chair";
 const WHO = "rade";                       // one body is enough to judge a seat by
-const ROW = {desk: "r1", sofa: "r13"};
+const ROW = {desk: "r1", sofa: "r13", chair: "r1"};
 
 async function boot(){
   S = await (await fetch("office/scene.json?v=" + Date.now())).json();
   T = await (await fetch(q("api/seats"))).json();
+  L = await (await fetch(q("api/layout"))).json();
   [W, H] = S.world;
   const jobs = [load("bg", "office/room_bg.png")], seen = new Set();
   for (const p of S.props) if (!seen.has(p.a)) { seen.add(p.a); jobs.push(load("a:" + p.a, "office/assets/" + p.a + ".png")); }
@@ -78,7 +73,7 @@ async function boot(){
     for (const f of S.chars[WHO].rows[r].f)
       jobs.push(load("c:" + f.f, "office/chars/" + WHO + "/" + f.f + ".png"));
   await Promise.all(jobs);
-  bindUI(); fit(); addEventListener("resize", fit); draw();
+  bindUI(); sync(); fit(); addEventListener("resize", fit); draw();
 }
 
 function fit(){
@@ -91,19 +86,17 @@ function fit(){
   draw();
 }
 
-/* the same arithmetic bake_scene does, so what is on screen is what gets baked */
+/* the same arithmetic bake_scene does, so what is on screen is what gets baked.
+   A chair carries its seat: it is a piece of furniture in the layout, and the
+   body sits on it by one offset shared by every chair in the room. */
+function chairs(){ return L.filter(it => it.asset === "chair"); }
+
 function seats(){
-  const out = [];
-  for (const p of S.props) {
-    if (p.a === "desk") {
-      const c = [p.x + T.desk.chair[0], p.y + T.desk.chair[1]];
-      out.push({kind: "desk", chair: c,
-                x: c[0] + T.desk.sit[0], y: c[1] + T.desk.sit[1], sortY: c[1] + 1, z: 0});
-    } else if (p.a === "sofa" && !out.some(s => s.kind === "sofa")) {
-      out.push({kind: "sofa", chair: null, x: p.x + T.sofa.sit[0], y: p.y + T.sofa.sit[1],
-                sortY: p.y + 2, z: p.z});
-    }
-  }
+  const out = chairs().map(c => ({kind: "chair", at: c,
+    x: c.x + T.desk.sit[0], y: c.y + T.desk.sit[1], sortY: c.y + 1, z: c.z || 0}));
+  const sofa = S.props.find(p => p.a === "sofa");
+  if (sofa) out.push({kind: "sofa", at: null, x: sofa.x + T.sofa.sit[0],
+                      y: sofa.y + T.sofa.sit[1], sortY: sofa.y + 2, z: sofa.z});
   return out;
 }
 
@@ -120,20 +113,26 @@ function draw(){
   if (!S || !IMG.bg) return;
   cx.clearRect(0, 0, W, H);
   cx.drawImage(IMG.bg, 0, 0);
-  const list = S.props.map(p => ({y: p.y, z: p.z, run: () => {
+  /* the baked props still hold the chairs where the last bake left them; the
+     live ones come from the layout so a drag shows up under the pointer */
+  const paint = p => ({y: p.y, z: p.z || 0, run: () => {
     const im = IMG["a:" + p.a]; if (!im) return;
     cx.save();
     if (p.flip) { cx.translate(Math.round(p.x), 0); cx.scale(-1, 1); cx.translate(-Math.round(p.x), 0); }
     cx.drawImage(im, Math.round(p.x - im.width / 2), Math.round(p.y - im.height));
     cx.restore();
-  }}));
+  }});
+  const list = S.props.filter(p => p.a !== "chair").map(paint);
+  for (const c of chairs()) list.push(paint({a: "chair", x: c.x, y: c.y, z: c.z || 0}));
   for (const s of seats()) {
     const b = drawn(s.kind);
     const w = Math.round(b.f.w * b.k), h = Math.round(b.f.h * b.k);
     const ox = Math.round((b.f.ax !== undefined ? b.f.ax : b.f.w / 2) * b.k);
+    const lit = PICK === "sofa" ? s.kind === "sofa"
+              : PICK === "chair" ? s.at === HOT : s.kind === "chair";
     list.push({y: s.sortY, z: s.z, run: () => {
       if (b.im) cx.drawImage(b.im, Math.round(s.x) - ox, Math.round(s.y - h), w, h);
-      if (s.kind === PICK) {
+      if (lit) {
         cx.strokeStyle = "#b57bff"; cx.lineWidth = 1;
         cx.strokeRect(Math.round(s.x) - ox + .5, Math.round(s.y - h) + .5, w - 1, h - 1);
       }
@@ -143,26 +142,39 @@ function draw(){
 }
 
 /* ------------------------------------------------------------------- input */
-let drag = null;
-cv.addEventListener("pointerdown", e => {
+/* In "chairs" the drag moves one chair around the room, and the person on it
+   comes along. In the other two it moves the person on the seat, and every
+   seat of that kind moves together, because how a body sits on a chair is one
+   fact about the drawing rather than seven. */
+let drag = null, HOT = null;
+
+function at(e){
   const r = cv.getBoundingClientRect();
-  const x = (e.clientX - r.left) / SCALE, y = (e.clientY - r.top) / SCALE;
+  return [(e.clientX - r.left) / SCALE, (e.clientY - r.top) / SCALE];
+}
+
+function nearest(x, y){
   let best = null, bd = 1e9;
   for (const s of seats()) {
-    const d = Math.hypot(s.x - x, s.y - 40 - y);
+    const d = Math.hypot(s.x - x, s.y - 40 - y);      // aim at the chest, not the feet
     if (d < bd) { bd = d; best = s; }
   }
-  if (!best || bd > 90) return;
-  PICK = best.kind; sync();
-  drag = {kind: best.kind, x, y, at: T[best.kind].sit.slice()};
+  return bd > 90 ? null : best;
+}
+
+cv.addEventListener("pointerdown", e => {
+  const [x, y] = at(e);
+  const s = nearest(x, y);
+  if (!s) return;
+  if (s.kind === "chair") { PICK = "chair"; HOT = s.at; drag = {x, y, from: [s.at.x, s.at.y]}; }
+  else { PICK = s.kind; drag = {x, y, from: T[s.kind].sit.slice()}; }
+  sync();
   cv.classList.add("drag"); cv.setPointerCapture(e.pointerId);
 });
 cv.addEventListener("pointermove", e => {
   if (!drag) return;
-  const r = cv.getBoundingClientRect();
-  const x = (e.clientX - r.left) / SCALE, y = (e.clientY - r.top) / SCALE;
-  T[drag.kind].sit = [Math.round(drag.at[0] + x - drag.x), Math.round(drag.at[1] + y - drag.y)];
-  draw();
+  const [x, y] = at(e);
+  move(Math.round(drag.from[0] + x - drag.x), Math.round(drag.from[1] + y - drag.y));
 });
 addEventListener("pointerup", () => { drag = null; cv.classList.remove("drag"); });
 
@@ -170,9 +182,15 @@ addEventListener("keydown", e => {
   const d = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
   if (!d) return;
   e.preventDefault();
-  T[PICK].sit = [T[PICK].sit[0] + d[0], T[PICK].sit[1] + d[1]];
-  draw();
+  const now = PICK === "chair" ? (HOT && [HOT.x, HOT.y]) : T[PICK].sit;
+  if (now) move(now[0] + d[0], now[1] + d[1]);
 });
+
+function move(x, y){
+  if (PICK === "chair") { if (!HOT) return; HOT.x = x; HOT.y = y; }
+  else T[PICK].sit = [x, y];
+  draw();
+}
 
 function slider(id, get, set, fmt){
   const s = $("s-" + id), v = $("v-" + id);
@@ -189,16 +207,19 @@ function bindUI(){
          v => T.rowScale.r1 = v / 100, v => v + "%");
   slider("r13", () => Math.round((T.rowScale.r13 || 1) * 100),
          v => T.rowScale.r13 = v / 100, v => v + "%");
-  slider("cx", () => T.desk.chair[0], v => T.desk.chair[0] = v, v => v + "px");
-  slider("cy", () => T.desk.chair[1], v => T.desk.chair[1] = v, v => v + "px");
-  $("p-desk").onclick = () => { PICK = "desk"; sync(); };
-  $("p-sofa").onclick = () => { PICK = "sofa"; sync(); };
+  for (const k of ["chair", "desk", "sofa"]) $("p-" + k).onclick = () => { PICK = k; sync(); };
   $("save").onclick = save;
 }
 
+const HINT = {
+  chair: "Drag any chair to move that one chair. Arrow keys nudge it by a pixel.",
+  desk: "Drag someone to change how a body sits on a chair. Every chair uses the same offset.",
+  sofa: "Drag the person on the sofa. Arrow keys nudge by a pixel.",
+};
+
 function sync(){
-  $("p-desk").classList.toggle("on", PICK === "desk");
-  $("p-sofa").classList.toggle("on", PICK === "sofa");
+  for (const k of ["chair", "desk", "sofa"]) $("p-" + k).classList.toggle("on", PICK === k);
+  $("hint").textContent = HINT[PICK];
   draw();
 }
 
@@ -208,10 +229,10 @@ async function save(){
   $("msg").textContent = "baking…";
   const r = await fetch(q("api/seats"), {method: "POST",
     headers: {"content-type": "application/json"},
-    body: JSON.stringify({key: KEY, seats: out})});
+    body: JSON.stringify({key: KEY, seats: out, layout: L})});
   const j = await r.json();
   $("msg").textContent = j.ok ? "saved, scene rebaked" : ("failed: " + (j.msg || r.status));
-  if (j.ok) { S = await (await fetch("office/scene.json?v=" + Date.now())).json(); bindUI(); draw(); }
+  if (j.ok) { S = await (await fetch("office/scene.json?v=" + Date.now())).json(); bindUI(); sync(); }
 }
 
 boot();

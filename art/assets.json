@@ -20,6 +20,10 @@
   ],
   "width": 217
  },
+ "chair": {
+  "edges": null,
+  "width": 81
+ },
  "coffee-frame": {
   "edges": null,
   "width": 46

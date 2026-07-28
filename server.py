@@ -318,6 +318,10 @@ def _room():
 
 def ed_layout(req):
     items = req if isinstance(req, list) else req.get("layout", [])
+    # `seat` is from the era when people were painted into the room's picture.
+    # A page opened before that changed still holds one and saves it straight
+    # back, pointing at a character folder that no longer exists.
+    items = [{k: v for k, v in it.items() if k != "seat"} for it in items]
     json.dump(items, open(LAYOUT_FILE, "w"), indent=1)
     return {"ok": True, "msg": "%d pieces" % len(items)}
 
@@ -390,12 +394,16 @@ def ed_seats(req):
     """Save how big people are and where they sit, then rebuild the scene.
 
     These numbers are eyeballed against the art, so they are set on
-    static/seats.html by dragging rather than guessed here."""
+    static/seats.html by dragging rather than guessed here. The same page also
+    drags the chairs themselves, and a chair is a piece of furniture like any
+    other, so those go back into the layout."""
     cfg = req.get("seats")
     if not isinstance(cfg, dict):
         return {"ok": False, "msg": "no seats in body"}
     with open(SEATS_FILE, "w") as f:
         json.dump(cfg, f, indent=1)
+    if isinstance(req.get("layout"), list):
+        ed_layout(req["layout"])
     import importlib
     import bake_scene
     importlib.reload(bake_scene)

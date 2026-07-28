@@ -45,7 +45,7 @@ WALL = 54                      # and further off the back walls: the wall is par
 TUNE = {
     "stand": 140,                       # height of a standing sprite, room px
     "rowScale": {"r1": 0.90, "r13": 1.00, "r2": 0.90, "r3": 0.90, "r11": 0.90},
-    "desk": {"chair": [-46, -46], "sit": [0, 8]},
+    "desk": {"sit": [0, 8]},            # how a body sits on a chair, same for all
     "sofa": {"sit": [34, -58]},
 }
 
@@ -144,17 +144,23 @@ def spots(items, m, t):
     desk or the desk stops hiding his legs.
     """
     out = {"desks": [], "sofa": None, "coffee": None}
+    desks = [it for it in items if it["asset"] == "desk"]
     for it in items:
         a, x, y = it["asset"], it["x"], it["y"]
-        if a == "desk":
-            # every desk has a real chair behind it (see CHAIR_AT), and that
-            # chair is the seat: the person is drawn one pixel deeper than it so
-            # they sit *in* it, and the desk, being nearer the viewer, still
-            # covers them from the waist down
-            cx_, cy_ = x + t["desk"]["chair"][0], y + t["desk"]["chair"][1]
+        if a == "chair":
+            # a chair is a seat, wherever the editor put it. It used to be
+            # derived from its desk by one shared offset, which meant a chair
+            # dragged into place was silently moved back on the next bake.
+            # The person is drawn one pixel deeper than the chair so they sit
+            # *in* it, and the desk, standing nearer the viewer, still covers
+            # them from the waist down.
             sx, sy = t["desk"]["sit"]
-            out["desks"].append({"walk": {"x": x - 96, "y": y + 62},
-                                 "sit": {"x": cx_ + sx, "y": cy_ + sy, "sortY": cy_ + 1}})
+            # walk up to it from the front left, past whichever desk it belongs
+            # to — the near side of a desk is the only side with floor on it
+            d = min(desks, key=lambda p: (p["x"] - x) ** 2 + (p["y"] - y) ** 2, default=None)
+            wx, wy = (d["x"] - 96, d["y"] + 62) if d else (x - 50, y + 108)
+            out["desks"].append({"walk": {"x": wx, "y": wy},
+                                 "sit": {"x": x + sx, "y": y + sy, "sortY": y + 1}})
         elif a == "sofa" and out["sofa"] is None:
             # the coffee table sits right against the front of the sofa, so the
             # only floor next to it is off its right arm: seat him on the right
@@ -307,13 +313,6 @@ def build():
     items = json.load(open(LAYOUT)) if os.path.exists(LAYOUT) else []
     # the page paints with the same rule build_room.py bakes with: the editor's
     # z first, then how far down the piece stands
-    # the chairs are not placed by hand: there is exactly one behind every desk,
-    # at the offset the seat tuner sets, so they follow the desks around
-    items = [it for it in items if it["asset"] != "chair"]
-    items += [{"asset": "chair", "x": d["x"] + t["desk"]["chair"][0],
-               "y": d["y"] + t["desk"]["chair"][1]}
-              for d in items if d["asset"] == "desk"]
-
     props = [{"a": it["asset"], "x": it["x"], "y": it["y"],
               "z": it.get("z", 0), "flip": bool(it.get("flip"))} for it in items]
 
@@ -339,7 +338,6 @@ def build():
         "spots": snap(spots(items, m, t), grid),
         "chars": cast(t.get("rowScale", {})),
         "stand": t.get("stand", 140),
-        "chairAt": t["desk"]["chair"],
     }
     json.dump(scene, open(os.path.join(OUT, "scene.json"), "w"))
     free = int((grid == 0).sum())
