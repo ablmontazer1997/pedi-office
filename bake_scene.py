@@ -289,12 +289,41 @@ def anchor_x(im):
 REACT = "r12"                  # the one row that is allowed to change shape
 
 
+def eye_line(im):
+    """How far the eyes sit above the soles, as a share of the whole sprite.
+
+    Holding everyone to the same total height does not make them the same size,
+    because the hair is part of that height and it is not part of the person:
+    rade's spikes take five per cent more of him than kip's cap takes of kip,
+    so at an equal height rade is a smaller man wearing taller hair. The eyes
+    are the landmark instead — they sit at the same place on every one of these
+    bodies — and they are easy to find, being the only pure white on a face.
+    """
+    a = np.asarray(im).astype(int)
+    h = a.shape[0]
+    r, g, b, al = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
+    white = (al > 40) & (r > 215) & (g > 215) & (b > 210)
+    white[int(h * 0.55):] = False              # a white shirt is not an eye
+    lab, n = ndimage.label(white)
+    if not n:
+        return None
+    sizes = ndimage.sum(white, lab, range(1, n + 1))
+    ys = [float(np.nonzero((lab == i + 1).any(1))[0].mean())
+          for i, v in enumerate(sizes) if v >= 3]
+    if not ys:
+        return None
+    lo = min(ys)                               # the eyes, and whatever glints
+    near = [y for y in ys if y - lo <= 6]      # on the glasses beside them
+    p = 1 - (sum(near) / len(near)) / h
+    return p if 0.60 < p < 0.85 else None
+
+
 def chars(tag, scale):
     src = os.path.join(ART, "chars", tag)
     dst = os.path.join(OUT, "chars", tag)
     shutil.rmtree(dst, ignore_errors=True)
     os.makedirs(dst)
-    rows = {}
+    rows, eyes = {}, []
     for f in sorted(os.listdir(src)):
         if not f.endswith(".png"):
             continue
@@ -303,6 +332,10 @@ def chars(tag, scale):
         row = f.split("_")[0]
         rows.setdefault(row, []).append({"f": f[:-4], "w": im.width, "h": im.height,
                                          "ax": anchor_x(im)})
+        if row == "r0":                        # the one row that faces the camera
+            p = eye_line(im)
+            if p:
+                eyes.append(p)
 
     def med(r):
         hs = sorted(d["h"] for d in rows[r])
@@ -331,7 +364,8 @@ def chars(tag, scale):
     # frame of the cycle a few pixels taller than the rest, and scaling everyone
     # by whichever frame happened to land first is why they ended up different
     # heights on screen.
-    return {"base": base, "rows": out}
+    return {"base": base, "rows": out,
+            "p": round(sorted(eyes)[len(eyes) // 2], 4) if eyes else None}
 
 
 def cast(scale):
@@ -343,7 +377,24 @@ def cast(scale):
     for stale in os.listdir(os.path.join(OUT, "chars")):
         if stale not in tags:
             shutil.rmtree(os.path.join(OUT, "chars", stale), ignore_errors=True)
-    return {t: chars(t, scale) for t in tags}
+    out = {t: chars(t, scale) for t in tags}
+
+    # Everyone is drawn to the same eye line, and their hair reaches as far
+    # above it as it likes — which is what "the same size" means for people
+    # with a cap, a bun and a spike. The line is the cast's own average, so
+    # nobody is measured against a number picked out of the air.
+    seen = [c["p"] for c in out.values() if c["p"]]
+    if seen:
+        target = sum(seen) / len(seen)
+        for c in out.values():
+            fix = target / c["p"] if c["p"] else 1.0
+            for row in c["rows"].values():
+                row["k"] = round(row["k"] * fix, 4)
+                for d in row["f"]:
+                    if "k" in d:
+                        d["k"] = round(d["k"] * fix, 4)
+            c.pop("p")
+    return out
 
 
 def build():
