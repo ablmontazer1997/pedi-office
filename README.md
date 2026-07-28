@@ -15,9 +15,11 @@ Two halves:
 ## The room
 
     layout.json          what the editor placed: asset, x, y, z, flip
-    bake_scene.py        turns that into static/office/scene.json
+    seats.json           how big people are and where exactly they sit
+    bake_scene.py        turns both into static/office/scene.json
     static/live.html     draws it and runs the people
     static/editor.html   drag the furniture around
+    static/seats.html    drag the people, then save and rebake
 
 `bake_scene.py` is where the geometry is decided once, so the page never has to
 guess:
@@ -38,6 +40,11 @@ guess:
   the sprite hangs from the body rather than from the middle of its bounding
   box. A full-stride frame is 240 px wide and a passing frame 157; centring on
   the frame throws the body sideways twice per step.
+
+Sizes and seat offsets are the one part that cannot be derived from anything —
+they are judged against the art by eye — so they are not constants in the
+source. `static/seats.html` puts a body on every seat, lets you drag it and
+scale it, and `POST /api/seats` writes `seats.json` and rebuilds the scene.
 
 ## The characters
 

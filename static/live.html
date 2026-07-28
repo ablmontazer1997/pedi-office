@@ -29,7 +29,7 @@ let S = null, GRID = null, GW = 0, GH = 0, CELL = 10, W = 0, H = 0, SCALE = 1;
 /* ---- how big a character is drawn: one factor per person, so their seated
    frame and their walking frame stay the same body. STAND is the height, in
    room pixels, of the walking sprite from sole to hair. ---- */
-const STAND = 140;
+let STAND = 140;                            // overridden by the baked scene
 const K = {};                               // tag -> scale, set once frames load
 
 /* rows, as extract_rade.py wrote them */
@@ -44,6 +44,7 @@ async function boot(){
   [W, H] = S.world; CELL = S.cell;
   GRID = S.grid; GH = GRID.length; GW = GRID[0].length;
   CAST = Object.keys(S.chars);
+  STAND = S.stand || STAND;
   const jobs = [load("bg", "office/room_bg.png")];
   const seen = new Set();
   for (const p of S.props) if (!seen.has(p.a)) { seen.add(p.a); jobs.push(load("a:" + p.a, "office/assets/" + p.a + ".png")); }

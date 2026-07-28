@@ -26,6 +26,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, "art")
 OUT = os.path.join(HERE, "static", "office")
 LAYOUT = os.path.join(HERE, "layout.json")
+SEATS = os.path.join(HERE, "seats.json")
 
 CELL = 10                      # collision cell, in room pixels
 BODY = 1                       # cells of clearance kept around every obstacle.
@@ -38,7 +39,27 @@ WALL = 54                      # and further off the back walls: the wall is par
                                # of the backdrop, so anyone who gets that high is
                                # drawn on top of it and appears to stand in the
                                # window
-CHAIR_AT = (-46, -46)          # where a desk's chair stands, relative to the desk
+# How big people are and where exactly they sit. These are the numbers nobody
+# can work out from first principles — they are eyeballed against the art — so
+# they live in seats.json and are tuned on static/seats.html rather than here.
+TUNE = {
+    "stand": 140,                       # height of a standing sprite, room px
+    "rowScale": {"r1": 0.90, "r13": 1.00, "r2": 0.90, "r3": 0.90, "r11": 0.90},
+    "desk": {"chair": [-46, -46], "sit": [0, 8]},
+    "sofa": {"sit": [34, -58]},
+}
+
+
+def tune():
+    t = json.loads(json.dumps(TUNE))
+    if os.path.exists(SEATS):
+        saved = json.load(open(SEATS))
+        for k, v in saved.items():
+            if isinstance(v, dict) and isinstance(t.get(k), dict):
+                t[k].update(v)
+            else:
+                t[k] = v
+    return t
 
 
 def _meta():
@@ -114,7 +135,7 @@ def blocked_grid(items, m):
     return grown
 
 
-def spots(items, m):
+def spots(items, m, t):
     """Where the character is sent.
 
     Each spot has two parts: `walk` is a place on the floor the pathfinder can
@@ -130,16 +151,17 @@ def spots(items, m):
             # chair is the seat: the person is drawn one pixel deeper than it so
             # they sit *in* it, and the desk, being nearer the viewer, still
             # covers them from the waist down
-            cx_, cy_ = x + CHAIR_AT[0], y + CHAIR_AT[1]
+            cx_, cy_ = x + t["desk"]["chair"][0], y + t["desk"]["chair"][1]
+            sx, sy = t["desk"]["sit"]
             out["desks"].append({"walk": {"x": x - 96, "y": y + 62},
-                                 "sit": {"x": cx_, "y": cy_ + 8, "sortY": cy_ + 1}})
+                                 "sit": {"x": cx_ + sx, "y": cy_ + sy, "sortY": cy_ + 1}})
         elif a == "sofa" and out["sofa"] is None:
             # the coffee table sits right against the front of the sofa, so the
             # only floor next to it is off its right arm: seat him on the right
             # cushion too, or he crosses the whole sofa in one frame
             out["sofa"] = {"walk": {"x": x + 176, "y": y + 6},
-                           "sit": {"x": x + 34, "y": y - 58, "sortY": y + 2,
-                                   "z": it.get("z", 0)}}
+                           "sit": {"x": x + t["sofa"]["sit"][0], "y": y + t["sofa"]["sit"][1],
+                                   "sortY": y + 2, "z": it.get("z", 0)}}
         elif a.startswith("coffee") and out["coffee"] is None:
             # `coffee-frame` is the neon sign on the wall, not the counter: stand
             # in front of whatever piece of furniture is under it, otherwise the
@@ -195,10 +217,6 @@ def snap(out, grid):
 # the model framed some rows tighter than others, so a frame's own height is not
 # the character's height. Each row is normalised against the walk row instead:
 # standing poses match it, seated poses are the same person folded up.
-SEATED = {"r1", "r2", "r3", "r11", "r13"}
-SEATED_REL = 0.9
-
-
 SHRINK = 0.5                   # the model draws a walk frame about 320 px tall
                                # and the page paints it at 140: shipping the
                                # originals is 64 MB of PNG for pixels nobody
@@ -239,7 +257,7 @@ def anchor_x(im):
     return int(round((xs.min() + xs.max()) / 2)) if len(xs) else im.width // 2
 
 
-def chars(tag="rade"):
+def chars(tag, scale):
     src = os.path.join(ART, "chars", tag)
     dst = os.path.join(OUT, "chars", tag)
     shutil.rmtree(dst, ignore_errors=True)
@@ -262,7 +280,7 @@ def chars(tag="rade"):
     out = {}
     for r in rows:
         rows[r].sort(key=lambda d: d["f"])
-        rel = SEATED_REL if r in SEATED else 1.0
+        rel = scale.get(r, 1.0)
         out[r] = {"k": round(rel * base / med(r), 4), "f": rows[r]}
     # `base` is the median walk frame, not the first one: the model draws one
     # frame of the cycle a few pixels taller than the rest, and scaling everyone
@@ -271,20 +289,31 @@ def chars(tag="rade"):
     return {"base": base, "rows": out}
 
 
-def cast():
+def cast(scale):
     """Every folder under art/chars is somebody who lives in this office."""
     root = os.path.join(ART, "chars")
     tags = sorted(t for t in os.listdir(root)
                   if os.path.isdir(os.path.join(root, t))
                   and any(f.endswith(".png") for f in os.listdir(os.path.join(root, t))))
-    return {t: chars(t) for t in tags}
+    for stale in os.listdir(os.path.join(OUT, "chars")):
+        if stale not in tags:
+            shutil.rmtree(os.path.join(OUT, "chars", stale), ignore_errors=True)
+    return {t: chars(t, scale) for t in tags}
 
 
 def build():
     m = _meta()
+    t = tune()
     items = json.load(open(LAYOUT)) if os.path.exists(LAYOUT) else []
     # the page paints with the same rule build_room.py bakes with: the editor's
     # z first, then how far down the piece stands
+    # the chairs are not placed by hand: there is exactly one behind every desk,
+    # at the offset the seat tuner sets, so they follow the desks around
+    items = [it for it in items if it["asset"] != "chair"]
+    items += [{"asset": "chair", "x": d["x"] + t["desk"]["chair"][0],
+               "y": d["y"] + t["desk"]["chair"][1]}
+              for d in items if d["asset"] == "desk"]
+
     props = [{"a": it["asset"], "x": it["x"], "y": it["y"],
               "z": it.get("z", 0), "flip": bool(it.get("flip"))} for it in items]
 
@@ -307,8 +336,10 @@ def build():
         "cell": CELL,
         "grid": ["".join(str(v) for v in row) for row in grid],
         "props": props,
-        "spots": snap(spots(items, m), grid),
-        "chars": cast(),
+        "spots": snap(spots(items, m, t), grid),
+        "chars": cast(t.get("rowScale", {})),
+        "stand": t.get("stand", 140),
+        "chairAt": t["desk"]["chair"],
     }
     json.dump(scene, open(os.path.join(OUT, "scene.json"), "w"))
     free = int((grid == 0).sum())

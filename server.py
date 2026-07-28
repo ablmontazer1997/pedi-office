@@ -305,6 +305,7 @@ def public_status():
 # things: the asset library (art/assets.json + the rendered pngs) and the room
 # layout (layout.json), then asks for a bake, which is just build_room.build().
 LAYOUT_FILE = os.path.join(HERE, "layout.json")
+SEATS_FILE = os.path.join(HERE, "seats.json")
 
 
 def _room():
@@ -376,8 +377,25 @@ def ed_bake(req):
     return {"ok": True, "at": time.strftime("%H:%M:%S", time.localtime(os.path.getmtime(out)))}
 
 
+def ed_seats(req):
+    """Save how big people are and where they sit, then rebuild the scene.
+
+    These numbers are eyeballed against the art, so they are set on
+    static/seats.html by dragging rather than guessed here."""
+    cfg = req.get("seats")
+    if not isinstance(cfg, dict):
+        return {"ok": False, "msg": "no seats in body"}
+    with open(SEATS_FILE, "w") as f:
+        json.dump(cfg, f, indent=1)
+    import importlib
+    import bake_scene
+    importlib.reload(bake_scene)
+    bake_scene.build()
+    return {"ok": True}
+
+
 EDIT_POST = {"layout": ed_layout, "asset": ed_asset, "asset-size": ed_size,
-             "asset-fit": ed_fit, "bake": ed_bake}
+             "asset-fit": ed_fit, "bake": ed_bake, "seats": ed_seats}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -470,6 +488,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/assets":
             assets, _ = _room()
             self._json(assets.manifest())
+            return
+        if path == "/api/seats":
+            import bake_scene
+            self._json(bake_scene.tune())
             return
         if path == "/api/layout":
             self._json(json.load(open(LAYOUT_FILE)) if os.path.exists(LAYOUT_FILE) else [])
