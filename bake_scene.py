@@ -45,7 +45,7 @@ WALL = 54                      # and further off the back walls: the wall is par
 TUNE = {
     "stand": 140,                       # height of a standing sprite, room px
     "rowScale": {"r1": 0.90, "r13": 1.00, "r2": 0.90, "r3": 0.90, "r11": 0.90},
-    "desk": {"sit": [-55, -43]},        # where the typist sits behind a desk
+    "desk": {"sit": [-74, -26]},        # where the typist sits at a desk
     "sofa": {"sit": [34, -58]},
 }
 
@@ -151,11 +151,16 @@ def spots(items, m, t):
             # to put their hands on that keyboard, and a chair is dragged around
             # for the look of the thing. Hanging the body off the chair meant
             # nudging a chair dragged the typist off their keyboard with it.
+            #
+            # And they sit at the near left corner, drawn *over* the desk. The
+            # keyboard is painted on the near left of the top, so there is no
+            # seat behind the desk that reaches it: a body back there has the
+            # whole tabletop between its hands and the keys, which is why
+            # shrinking the desk never helped. Sitting on this side puts the
+            # hands straight onto the keys, which is where the art meant them.
             sx, sy = t["desk"]["sit"]
-            # drawn before the desk, which is what keeps the desk in front of
-            # their legs, and after the chair, so they sit in it and not behind
             out["desks"].append({"walk": {"x": x - 96, "y": y + 62},
-                                 "sit": {"x": x + sx, "y": y + sy, "sortY": y - 1}})
+                                 "sit": {"x": x + sx, "y": y + sy, "sortY": y + 1}})
         elif a == "sofa" and out["sofa"] is None:
             # the coffee table sits right against the front of the sofa, so the
             # only floor next to it is off its right arm: seat him on the right
@@ -322,7 +327,20 @@ def build():
                and abs(p["x"] - sofa["x"]) < 210:
                 p["z"] = sofa["z"] + 1
 
-    props.sort(key=lambda p: (p["z"], p["y"]))
+    # A chair tucked in at a desk stands further from the viewer than the desk
+    # does, so by its own depth it is drawn first and the desk swallows it —
+    # while the person sitting in it is drawn over the desk, on this side of the
+    # tabletop, and ends up floating on nothing. The chair is sorted with the
+    # seat it belongs to instead, between the desk and whoever sits down.
+    for p in props:
+        if p["a"] != "chair":
+            continue
+        near = [d for d in props if d["a"] == "desk" and abs(d["x"] - p["x"]) < 120
+                and 0 < d["y"] - p["y"] < 90]
+        if near:
+            p["sy"] = min(near, key=lambda d: abs(d["x"] - p["x"]))["y"] + 0.5
+
+    props.sort(key=lambda p: (p["z"], p.get("sy", p["y"])))
 
     grid = blocked_grid(items, m)
     scene = {

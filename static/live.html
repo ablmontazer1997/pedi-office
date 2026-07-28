@@ -293,7 +293,7 @@ function frame(now){
   cx.clearRect(0, 0, W, H);
   cx.drawImage(IMG.bg, 0, 0);
 
-  const list = S.props.map(p => ({y: p.y, z: p.z, run: () => {
+  const list = S.props.map(p => ({y: p.sy !== undefined ? p.sy : p.y, z: p.z, run: () => {
     const im = IMG["a:" + p.a]; if (!im) return;
     cx.save();
     if (p.flip) { cx.translate(Math.round(p.x), 0); cx.scale(-1, 1); cx.translate(-Math.round(p.x), 0); }

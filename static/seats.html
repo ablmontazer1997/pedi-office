@@ -92,9 +92,18 @@ function fit(){
    on that keyboard, and the chair is furniture you drag where it looks right. */
 function chairs(){ return L.filter(it => it.asset === "chair"); }
 
+/* the same rule the bake uses: a chair tucked in at a desk is drawn with the
+   seat, after the desk, or the tabletop hides it and its rider floats */
+function chairSortY(c){
+  const near = S.props.filter(d => d.a === "desk" && Math.abs(d.x - c.x) < 120
+                                   && d.y - c.y > 0 && d.y - c.y < 90);
+  if (!near.length) return c.y;
+  return near.reduce((a, d) => Math.abs(d.x - c.x) < Math.abs(a.x - c.x) ? d : a).y + 0.5;
+}
+
 function seats(){
   const out = S.props.filter(p => p.a === "desk").map(d => ({kind: "desk",
-    x: d.x + T.desk.sit[0], y: d.y + T.desk.sit[1], sortY: d.y - 1, z: d.z}));
+    x: d.x + T.desk.sit[0], y: d.y + T.desk.sit[1], sortY: d.y + 1, z: d.z}));
   const sofa = S.props.find(p => p.a === "sofa");
   if (sofa) out.push({kind: "sofa", x: sofa.x + T.sofa.sit[0],
                       y: sofa.y + T.sofa.sit[1], sortY: sofa.y + 2, z: sofa.z});
@@ -116,7 +125,7 @@ function draw(){
   cx.drawImage(IMG.bg, 0, 0);
   /* the baked props still hold the chairs where the last bake left them; the
      live ones come from the layout so a drag shows up under the pointer */
-  const paint = p => ({y: p.y, z: p.z || 0, run: () => {
+  const paint = p => ({y: p.sy !== undefined ? p.sy : p.y, z: p.z || 0, run: () => {
     const im = IMG["a:" + p.a]; if (!im) return;
     cx.save();
     if (p.flip) { cx.translate(Math.round(p.x), 0); cx.scale(-1, 1); cx.translate(-Math.round(p.x), 0); }
@@ -125,7 +134,7 @@ function draw(){
   }});
   const list = S.props.filter(p => p.a !== "chair").map(paint);
   for (const c of chairs()) {
-    const o = paint({a: "chair", x: c.x, y: c.y, z: c.z || 0}), run = o.run;
+    const o = paint({a: "chair", x: c.x, y: c.y, z: c.z || 0, sy: chairSortY(c)}), run = o.run;
     o.run = () => {
       run();
       const im = IMG["a:chair"];
