@@ -45,7 +45,7 @@ WALL = 54                      # and further off the back walls: the wall is par
 TUNE = {
     "stand": 140,                       # height of a standing sprite, room px
     "rowScale": {"r1": 0.90, "r13": 1.00, "r2": 0.90, "r3": 0.90, "r11": 0.90},
-    "desk": {"sit": [0, 8]},            # how a body sits on a chair, same for all
+    "desk": {"sit": [-55, -43]},        # where the typist sits behind a desk
     "sofa": {"sit": [34, -58]},
 }
 
@@ -144,23 +144,18 @@ def spots(items, m, t):
     desk or the desk stops hiding his legs.
     """
     out = {"desks": [], "sofa": None, "coffee": None}
-    desks = [it for it in items if it["asset"] == "desk"]
     for it in items:
         a, x, y = it["asset"], it["x"], it["y"]
-        if a == "chair":
-            # a chair is a seat, wherever the editor put it. It used to be
-            # derived from its desk by one shared offset, which meant a chair
-            # dragged into place was silently moved back on the next bake.
-            # The person is drawn one pixel deeper than the chair so they sit
-            # *in* it, and the desk, standing nearer the viewer, still covers
-            # them from the waist down.
+        if a == "desk":
+            # Who sits here is fixed to the desk, not to the chair: the seat has
+            # to put their hands on that keyboard, and a chair is dragged around
+            # for the look of the thing. Hanging the body off the chair meant
+            # nudging a chair dragged the typist off their keyboard with it.
             sx, sy = t["desk"]["sit"]
-            # walk up to it from the front left, past whichever desk it belongs
-            # to — the near side of a desk is the only side with floor on it
-            d = min(desks, key=lambda p: (p["x"] - x) ** 2 + (p["y"] - y) ** 2, default=None)
-            wx, wy = (d["x"] - 96, d["y"] + 62) if d else (x - 50, y + 108)
-            out["desks"].append({"walk": {"x": wx, "y": wy},
-                                 "sit": {"x": x + sx, "y": y + sy, "sortY": y + 1}})
+            # drawn before the desk, which is what keeps the desk in front of
+            # their legs, and after the chair, so they sit in it and not behind
+            out["desks"].append({"walk": {"x": x - 96, "y": y + 62},
+                                 "sit": {"x": x + sx, "y": y + sy, "sortY": y - 1}})
         elif a == "sofa" and out["sofa"] is None:
             # the coffee table sits right against the front of the sofa, so the
             # only floor next to it is off its right arm: seat him on the right

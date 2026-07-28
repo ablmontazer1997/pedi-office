@@ -66,6 +66,7 @@ async function boot(){
   S = await (await fetch("office/scene.json?v=" + Date.now())).json();
   T = await (await fetch(q("api/seats"))).json();
   L = await (await fetch(q("api/layout"))).json();
+  HOT = chairs()[0] || null;              // so the arrow keys work before a click
   [W, H] = S.world;
   const jobs = [load("bg", "office/room_bg.png")], seen = new Set();
   for (const p of S.props) if (!seen.has(p.a)) { seen.add(p.a); jobs.push(load("a:" + p.a, "office/assets/" + p.a + ".png")); }
@@ -87,15 +88,15 @@ function fit(){
 }
 
 /* the same arithmetic bake_scene does, so what is on screen is what gets baked.
-   A chair carries its seat: it is a piece of furniture in the layout, and the
-   body sits on it by one offset shared by every chair in the room. */
+   A body belongs to its desk, not to a chair: the seat has to land their hands
+   on that keyboard, and the chair is furniture you drag where it looks right. */
 function chairs(){ return L.filter(it => it.asset === "chair"); }
 
 function seats(){
-  const out = chairs().map(c => ({kind: "chair", at: c,
-    x: c.x + T.desk.sit[0], y: c.y + T.desk.sit[1], sortY: c.y + 1, z: c.z || 0}));
+  const out = S.props.filter(p => p.a === "desk").map(d => ({kind: "desk",
+    x: d.x + T.desk.sit[0], y: d.y + T.desk.sit[1], sortY: d.y - 1, z: d.z}));
   const sofa = S.props.find(p => p.a === "sofa");
-  if (sofa) out.push({kind: "sofa", at: null, x: sofa.x + T.sofa.sit[0],
+  if (sofa) out.push({kind: "sofa", x: sofa.x + T.sofa.sit[0],
                       y: sofa.y + T.sofa.sit[1], sortY: sofa.y + 2, z: sofa.z});
   return out;
 }
@@ -123,16 +124,25 @@ function draw(){
     cx.restore();
   }});
   const list = S.props.filter(p => p.a !== "chair").map(paint);
-  for (const c of chairs()) list.push(paint({a: "chair", x: c.x, y: c.y, z: c.z || 0}));
+  for (const c of chairs()) {
+    const o = paint({a: "chair", x: c.x, y: c.y, z: c.z || 0}), run = o.run;
+    o.run = () => {
+      run();
+      const im = IMG["a:chair"];
+      if (!im || PICK !== "chair") return;
+      cx.strokeStyle = c === HOT ? "#b57bff" : "#4a3a6e"; cx.lineWidth = 1;
+      cx.strokeRect(Math.round(c.x - im.width / 2) + .5, Math.round(c.y - im.height) + .5,
+                    im.width - 1, im.height - 1);
+    };
+    list.push(o);
+  }
   for (const s of seats()) {
     const b = drawn(s.kind);
     const w = Math.round(b.f.w * b.k), h = Math.round(b.f.h * b.k);
     const ox = Math.round((b.f.ax !== undefined ? b.f.ax : b.f.w / 2) * b.k);
-    const lit = PICK === "sofa" ? s.kind === "sofa"
-              : PICK === "chair" ? s.at === HOT : s.kind === "chair";
     list.push({y: s.sortY, z: s.z, run: () => {
       if (b.im) cx.drawImage(b.im, Math.round(s.x) - ox, Math.round(s.y - h), w, h);
-      if (lit) {
+      if (s.kind === PICK) {
         cx.strokeStyle = "#b57bff"; cx.lineWidth = 1;
         cx.strokeRect(Math.round(s.x) - ox + .5, Math.round(s.y - h) + .5, w - 1, h - 1);
       }
@@ -142,10 +152,10 @@ function draw(){
 }
 
 /* ------------------------------------------------------------------- input */
-/* In "chairs" the drag moves one chair around the room, and the person on it
-   comes along. In the other two it moves the person on the seat, and every
-   seat of that kind moves together, because how a body sits on a chair is one
-   fact about the drawing rather than seven. */
+/* The mode decides what the pointer grabs, and nothing else moves with it. In
+   "chairs" one chair slides around and the people stay where they are typing;
+   in the other two the body moves and every seat of that kind moves together,
+   because how someone sits at a desk is one fact about the drawing, not seven. */
 let drag = null, HOT = null;
 
 function at(e){
@@ -154,9 +164,14 @@ function at(e){
 }
 
 function nearest(x, y){
+  // a chair is grabbed by the chair, a body by its chest — the feet are the
+  // sprite's anchor, and grabbing someone by the shoes reads as a miss
+  const list = PICK === "chair" ? chairs().map(c => ({at: c, x: c.x, y: c.y - 30}))
+                                : seats().filter(s => s.kind === PICK)
+                                         .map(s => ({at: null, x: s.x, y: s.y - 40}));
   let best = null, bd = 1e9;
-  for (const s of seats()) {
-    const d = Math.hypot(s.x - x, s.y - 40 - y);      // aim at the chest, not the feet
+  for (const s of list) {
+    const d = Math.hypot(s.x - x, s.y - y);
     if (d < bd) { bd = d; best = s; }
   }
   return bd > 90 ? null : best;
@@ -166,8 +181,8 @@ cv.addEventListener("pointerdown", e => {
   const [x, y] = at(e);
   const s = nearest(x, y);
   if (!s) return;
-  if (s.kind === "chair") { PICK = "chair"; HOT = s.at; drag = {x, y, from: [s.at.x, s.at.y]}; }
-  else { PICK = s.kind; drag = {x, y, from: T[s.kind].sit.slice()}; }
+  if (s.at) { HOT = s.at; drag = {x, y, from: [s.at.x, s.at.y]}; }
+  else drag = {x, y, from: T[PICK].sit.slice()};
   sync();
   cv.classList.add("drag"); cv.setPointerCapture(e.pointerId);
 });
@@ -212,8 +227,8 @@ function bindUI(){
 }
 
 const HINT = {
-  chair: "Drag any chair to move that one chair. Arrow keys nudge it by a pixel.",
-  desk: "Drag someone to change how a body sits on a chair. Every chair uses the same offset.",
+  chair: "Drag a chair to move that chair alone. Nobody moves with it. Arrow keys nudge the lit one by a pixel.",
+  desk: "Drag a typist to set where people sit at a desk. Every desk uses the same offset, so they all move.",
   sofa: "Drag the person on the sofa. Arrow keys nudge by a pixel.",
 };
 
