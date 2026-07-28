@@ -199,7 +199,8 @@ function seats(){
 function drawn(kind){
   const row = SCENE.chars[WHO].rows[ROW[kind]], f = row.f[0];
   const baked = (T._baked && T._baked[ROW[kind]]) || 1;
-  const k = (T.stand / SCENE.chars[WHO].base) * row.k * ((T.rowScale[ROW[kind]] || 1) / baked);
+  const fk = f.k !== undefined ? f.k : row.k;
+  const k = (T.stand / SCENE.chars[WHO].base) * fk * ((T.rowScale[ROW[kind]] || 1) / baked);
   return {im: IMG["c:" + f.f], f, k};
 }
 

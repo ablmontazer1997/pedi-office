@@ -183,7 +183,9 @@ function frameOf(A, row, i){
   const r = set[row] || set[ROW.S];
   const list = r.f;
   const f = list[((i % list.length) + list.length) % list.length];
-  return [IMG["c:" + A.tag + ":" + f.f], f, r.k];
+  // the frame's own factor where the bake left one, which is every row whose
+  // frames are all meant to be the same person at the same height
+  return [IMG["c:" + A.tag + ":" + f.f], f, f.k !== undefined ? f.k : r.k];
 }
 
 function release(A){

@@ -286,6 +286,9 @@ def anchor_x(im):
     return int(round((xs.min() + xs.max()) / 2)) if len(xs) else im.width // 2
 
 
+REACT = "r12"                  # the one row that is allowed to change shape
+
+
 def chars(tag, scale):
     src = os.path.join(ART, "chars", tag)
     dst = os.path.join(OUT, "chars", tag)
@@ -310,7 +313,20 @@ def chars(tag, scale):
     for r in rows:
         rows[r].sort(key=lambda d: d["f"])
         rel = scale.get(r, 1.0)
+        # Every frame gets its own factor, so all eight of a walk come out the
+        # same height. The model does not draw one person eight times: within a
+        # single row it drew this one 13 % shorter and hunched, and one factor
+        # for the row carried that straight to the screen as somebody who
+        # shrinks twice per step. Height is what the eye tracks here, so it is
+        # the height that is held still.
+        for d in rows[r]:
+            d["k"] = round(rel * base / d["h"], 4)
         out[r] = {"k": round(rel * base / med(r), 4), "f": rows[r]}
+    # ...except a reaction, where changing shape is the whole point: a stretch
+    # reaches up and is meant to be taller, and holding that to one height
+    # shrinks the person for exactly as long as they stretch.
+    for d in out.get(REACT, {}).get("f", []):
+        d.pop("k", None)
     # `base` is the median walk frame, not the first one: the model draws one
     # frame of the cycle a few pixels taller than the rest, and scaling everyone
     # by whichever frame happened to land first is why they ended up different
