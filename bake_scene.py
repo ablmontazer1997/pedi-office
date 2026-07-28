@@ -34,6 +34,7 @@ FOOT = 0.62                    # bottom fraction of a sprite that stands on the 
                                # on it: only the body of the desk down to the feet
                                # is ground the character may not walk into.
 MARGIN = 26                    # keep the character off the very edge of the floor
+CHAIR_AT = (-46, -46)          # where a desk's chair stands, relative to the desk
 
 
 def _meta():
@@ -108,18 +109,19 @@ def spots(items, m):
     for it in items:
         a, x, y = it["asset"], it["x"], it["y"]
         if a == "desk":
-            # a desk sprite is as tall as a person, so a chair pulled up close
-            # leaves nothing but a head showing. The seat sits a full desk depth
-            # behind it instead: still hidden from the waist down, still sorted
-            # in front of the desk, but the torso clears the desktop.
+            # every desk has a real chair behind it (see CHAIR_AT), and that
+            # chair is the seat: the person is drawn one pixel deeper than it so
+            # they sit *in* it, and the desk, being nearer the viewer, still
+            # covers them from the waist down
+            cx_, cy_ = x + CHAIR_AT[0], y + CHAIR_AT[1]
             out["desks"].append({"walk": {"x": x - 96, "y": y + 62},
-                                 "sit": {"x": x - 46, "y": y - 66, "sortY": y - 1}})
+                                 "sit": {"x": cx_, "y": cy_ + 10, "sortY": cy_ + 1}})
         elif a == "sofa" and out["sofa"] is None:
             # the coffee table sits right against the front of the sofa, so the
             # only floor next to it is off its right arm: seat him on the right
             # cushion too, or he crosses the whole sofa in one frame
             out["sofa"] = {"walk": {"x": x + 176, "y": y + 6},
-                           "sit": {"x": x + 96, "y": y - 48, "sortY": y + 2,
+                           "sit": {"x": x + 55, "y": y - 26, "sortY": y + 2,
                                    "z": it.get("z", 0)}}
         elif a.startswith("coffee") and out["coffee"] is None:
             # `coffee-frame` is the neon sign on the wall, not the counter: stand
@@ -148,7 +150,7 @@ def snap(out, grid):
     def fix(p):
         gx, gy = int(p["x"]) // CELL, int(p["y"]) // CELL
         if 0 <= gy < gh and 0 <= gx < gw and not grid[gy, gx]:
-            return
+            return True
         for r in range(1, 26):
             for dy in range(-r, r + 1):
                 for dx in range(-r, r + 1):
@@ -157,13 +159,19 @@ def snap(out, grid):
                     nx, ny = gx + dx, gy + dy
                     if 0 <= ny < gh and 0 <= nx < gw and not grid[ny, nx]:
                         p["x"], p["y"] = nx * CELL + CELL // 2, ny * CELL + CELL // 2
-                        return
+                        return True
+        return False
 
     for k in ("sofa", "coffee"):
-        if out.get(k):
-            fix(out[k]["walk"])
-    for d in out["desks"]:
-        fix(d["walk"])
+        if out.get(k) and not fix(out[k]["walk"]):
+            out[k] = None
+    # a desk walled in behind other furniture has no approach at all. Keeping it
+    # on the list only means somebody claims it, never gets there and stands
+    # still; it is dropped instead.
+    keep = [d for d in out["desks"] if fix(d["walk"])]
+    if len(keep) != len(out["desks"]):
+        print("   %d desk(s) unreachable, dropped" % (len(out["desks"]) - len(keep)))
+    out["desks"] = keep
     return out
 
 

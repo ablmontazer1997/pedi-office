@@ -52,17 +52,27 @@ def key_out(im):
         big = {i + 1 for i, s in enumerate(sizes) if s > 400}
         back |= np.isin(lab, list(big - edge))
 
+    # The model does not stop the sprite at its outline: it lays one ring of
+    # half-magenta pixels over it, opaque and bright violet, which is the halo
+    # everybody could see around these characters. It carries no drawing, so it
+    # is cut away rather than corrected — one pixel of a 350 px sheet that is
+    # painted at 140.
+    back = ndimage.binary_dilation(back, np.ones((3, 3)))
+
     rim = ndimage.binary_dilation(back, np.ones((3, 3))) & ~back
     alpha = np.where(back, 0.0, 1.0)
-    cover = np.clip(d / 110.0, 0.2, 1.0)
-    alpha = np.where(rim, cover, alpha)
+    alpha = np.where(rim, 0.8, alpha)
 
-    # un-mix the ring: what is left after the field's share is taken out
-    a3 = alpha[..., None]
-    mixed = np.clip((a - (1 - a3) * bg) / np.maximum(a3, 0.2), 0, 255)
-    out = np.where(rim[..., None], mixed, a)
+    # whatever violet survives the cut is neutralised, but only where it is
+    # dark: a dark magenta pixel is the field bleeding into a black outline,
+    # while a bright one is somebody's pink hair and must be left alone
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    near = ndimage.binary_dilation(back, np.ones((3, 3)), iterations=3)
+    spill = near & (r > g + 12) & (b > g + 12) & (a.max(2) < 175)
+    r = np.where(spill, g + (r - g) * 0.15, r)
+    b = np.where(spill, g + (b - g) * 0.15, b)
 
-    return Image.fromarray(np.dstack([out, alpha * 255]).astype(np.uint8), "RGBA")
+    return Image.fromarray(np.dstack([r, g, b, alpha * 255]).astype(np.uint8), "RGBA")
 
 
 def frames(im, want=8):

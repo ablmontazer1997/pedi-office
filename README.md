@@ -47,8 +47,13 @@ The sheets come back on a flat magenta field. The background is found by
 connectivity, not by colour distance — bright pink hair sits close enough to
 magenta that a colour key ate it — so any near-magenta region reaching the edge
 of the sheet is background, and everything walled off inside the silhouette is
-the character. Only the one pixel ring where they meet is un-mixed, which is
-what removes the violet fringe.
+the character. The one pixel ring where they meet carries no drawing, only the
+model's half-magenta blend, so it is cut away rather than corrected — that ring
+was the violet halo around every character.
+
+Nobody carries their own furniture: a chair is a room prop standing behind each
+desk, and the seated frames are drawn sitting on nothing, so the same pose works
+in a chair and on the sofa.
 
 Rows, as the page reads them:
 
