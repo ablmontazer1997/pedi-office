@@ -205,6 +205,26 @@ SHRINK = 0.5                   # the model draws a walk frame about 320 px tall
                                # ever sees, so they are halved on the way out
 
 
+def shrink(im):
+    """Halve a frame without dragging the cut-away background back in.
+
+    A transparent pixel still holds a colour, and a plain resize averages it
+    with its neighbours as if it were solid: the violet ring the extractor
+    deleted came straight back along every edge, one halving later. Resizing
+    the colour weighted by alpha, then dividing the weight out again, is the
+    ordinary fix and the only one that leaves the outline its own colour.
+    """
+    w, h = max(1, round(im.width * SHRINK)), max(1, round(im.height * SHRINK))
+    a = np.asarray(im).astype(np.float32)
+    al = a[:, :, 3:4] / 255.0
+    pm = Image.fromarray((a[:, :, :3] * al).astype(np.uint8), "RGB").resize((w, h), Image.LANCZOS)
+    am = Image.fromarray(a[:, :, 3].astype(np.uint8), "L").resize((w, h), Image.LANCZOS)
+    p = np.asarray(pm).astype(np.float32)
+    q = np.asarray(am).astype(np.float32)[:, :, None] / 255.0
+    rgb = np.clip(np.divide(p, np.maximum(q, 1 / 255.0)), 0, 255)
+    return Image.fromarray(np.dstack([rgb, q * 255]).astype(np.uint8), "RGBA")
+
+
 def anchor_x(im):
     """Where the body is inside its own frame.
 
@@ -228,9 +248,7 @@ def chars(tag="rade"):
     for f in sorted(os.listdir(src)):
         if not f.endswith(".png"):
             continue
-        im = Image.open(os.path.join(src, f)).convert("RGBA")
-        im = im.resize((max(1, round(im.width * SHRINK)), max(1, round(im.height * SHRINK))),
-                       Image.LANCZOS)
+        im = shrink(Image.open(os.path.join(src, f)).convert("RGBA"))
         im.quantize(colors=192, method=Image.FASTOCTREE).save(os.path.join(dst, f))
         row = f.split("_")[0]
         rows.setdefault(row, []).append({"f": f[:-4], "w": im.width, "h": im.height,
