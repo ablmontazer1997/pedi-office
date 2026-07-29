@@ -416,7 +416,7 @@ function frameOf(A, row, i){
   const f = list[((i % list.length) + list.length) % list.length];
   // the frame's own factor where the bake left one, which is every row whose
   // frames are all meant to be the same person at the same height
-  return [IMG["c:" + A.tag + ":" + f.f], f, f.k !== undefined ? f.k : r.k];
+  return [IMG["c:" + A.tag + ":" + f.f], f, f.k !== undefined ? f.k : r.k, r];
 }
 
 function release(A){
@@ -524,7 +524,12 @@ function step(A, dt, now){
     }
     if (!A.path || A.pi >= A.path.length) arrive(A, now);
     A.row = ROW[A.dir]; A.t += dt;
-    A.fi = Math.floor(A.walked / (STRIDE / 8));
+    // A row does not always hold eight frames — the bake drops the ones drawn as
+    // a different build — so a full stride is however many it has, or the feet
+    // would run at double speed on a four frame row.
+    const row = S.chars[A.tag].rows[A.row];
+    const n = row ? row.f.length : 8;
+    A.fi = Math.floor(A.walked / (STRIDE / n));
     return;
   }
   A.t += dt;
@@ -532,10 +537,12 @@ function step(A, dt, now){
   if (A.state === "sofa")  { A.row = has(ROW.sofa) ? ROW.sofa : ROW.mug;  A.fi = Math.floor(A.t * 3); }
   if (A.state === "drink") { A.row = has(ROW.drink) ? ROW.drink : ROW.mug; A.fi = Math.floor(A.t * 4); }
   if (A.state === "type")  { A.row = ROW.type;  A.fi = Math.floor(A.t * 5); }
-  // only one sheet was drawn with a sleeping row; for everyone else it is the
-  // typing pose held still, which with the zZ over the head reads the same
+  // Only two sheets were drawn asleep. For everyone else it used to be the
+  // typing pose held still, which read as somebody working with zZ stuck over
+  // their head; the sitting-back pose reads as somebody who has stopped.
   if (A.state === "sleep") { const s = has(ROW.sleep);
-                             A.row = s ? ROW.sleep : ROW.type; A.fi = s ? Math.floor(A.t * 2) : 0; }
+                             A.row = s ? ROW.sleep : has(ROW.sofa) ? ROW.sofa : ROW.type;
+                             A.fi = s ? Math.floor(A.t * 2) : 0; }
   if (A.state === "react") { A.row = ROW.react; A.fi = A.emote; }
   if (now > A.until) { A.t = 0; plan(A, now); }
 }
@@ -891,7 +898,17 @@ function frame(now){
   cx.clearRect(0, 0, W, H);
   cx.drawImage(IMG.bg, 0, 0);
 
-  const list = S.props.map(p => ({y: p.y, z: p.z, run: () => {
+  // A couple of the drawn poses sit on a chair of their own. Where one of those
+  // is at a desk, that desk's chair is left out of the picture for as long as
+  // they are in it, or the room shows the same seat twice.
+  const spare = new Set();
+  for (const A of CREW) {
+    const r = S.chars[A.tag].rows[A.row];
+    if (A.seat && r && r.chair && A.spot && A.spot.chairIdx >= 0) spare.add(A.spot.chairIdx);
+  }
+
+  const list = S.props.map((p, pi) => ({y: p.y, z: p.z, run: () => {
+    if (spare.has(pi)) return;
     const im = IMG["a:" + p.a]; if (!im) return;
     cx.save();
     if (p.flip) { cx.translate(Math.round(p.x), 0); cx.scale(-1, 1); cx.translate(-Math.round(p.x), 0); }
@@ -902,13 +919,16 @@ function frame(now){
   const plates = [];
   HITS = [];
   for (const A of CREW) {
-    const [sp, meta, rk] = frameOf(A, A.row, A.fi);
+    const [sp, meta, rk, rowMeta] = frameOf(A, A.row, A.fi);
     const k = K[A.tag] * rk;
-    const cw = Math.round(meta.w * k), ch = Math.round(meta.h * k);
+    // xk is the bake's width correction, one per row: the same build whichever
+    // way this person happens to be facing
+    const kx = k * ((rowMeta && rowMeta.xk) || 1);
+    const cw = Math.round(meta.w * kx), ch = Math.round(meta.h * k);
     const px = A.seat ? A.seat.x : A.x, py = A.seat ? A.seat.y : A.y;
     plates.push({A, px: Math.round(px), top: Math.round(py - ch)});
     // hang the frame from the middle of the torso, not the middle of the frame
-    const ox = Math.round((meta.ax !== undefined ? meta.ax : meta.w / 2) * k);
+    const ox = Math.round((meta.ax !== undefined ? meta.ax : meta.w / 2) * kx);
     if (WHOSE[A.tag])
       HITS.push({tag: A.tag, x0: px - ox, y0: py - ch, x1: px - ox + cw, y1: py});
     list.push({y: A.seat ? A.seat.sortY : A.y, z: (A.seat && A.seat.z) || 0, run: () => {

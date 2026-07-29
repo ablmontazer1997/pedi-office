@@ -227,7 +227,10 @@ def spots(items, m, t):
             # drawn after its chair and before its desk, so the chair is behind
             # the body and the desk still hides the legs
             out["desks"].append({"walk": walk,
-                                 "sit": {"x": seat["x"], "y": seat["y"], "sortY": y - 1}})
+                                 "sit": {"x": seat["x"], "y": seat["y"], "sortY": y - 1},
+                                 # which chair this desk owns, so the page can take
+                                 # it away for the poses that bring their own
+                                 "chair": {"x": ch["x"], "y": ch["y"]} if ch else None})
         elif a == "sofa":
             # A three seater is three seats. They sit along the sofa's own axis,
             # which runs up and to the right at the floor's ratio, and they are
@@ -370,6 +373,67 @@ def anchor_x(im):
 
 
 REACT = "r12"                  # the one row that is allowed to change shape
+# Poses drawn sitting on a chair the sheet drew in. Only rade's sheet has any:
+# his mug, sleeping and typing-from-behind rows all come with an office chair,
+# which is why the room has to take that desk's own chair away while he is in
+# one. bod's sleeping frame was drawn later, without a chair, so it is not here.
+# They are also left out of the width work below: squashing one squashes the
+# chair with it.
+WITH_CHAIR = {"rade": {"r2", "r3", "r11"}}
+
+
+WALK_ROWS = {"r0", "r4", "r5", "r6", "r7", "r8", "r9", "r10"}
+SLEEP, SIT = "r3", "r13"       # asleep, and the sitting pose a nap is made from
+
+
+def torso_w(im):
+    """The whole width of the body through the chest and the belly."""
+    a = np.asarray(im)[:, :, 3] > 40
+    h = a.shape[0]
+    band = a[int(h * 0.34):int(h * 0.62)]
+    xs = np.nonzero(band.any(0))[0]
+    return int(xs.max() - xs.min() + 1) if len(xs) else 0
+
+
+def steady(frames, base):
+    """Keep the frames of a walk that were drawn as the same body.
+
+    The model did not draw one man eight times. Measured through the chest, a
+    single cycle swings by a fifth on average and by half at worst: he sets off
+    lean and arrives heavy, twice per second. Nothing can be stretched out of
+    that, it is a different drawing.
+
+    But the frames alternate — one half of a cycle is consistent with itself and
+    the other half is where the drawing wandered — so the walk is run on the
+    half that agrees. Four frames is an ordinary pixel walk cycle; four frames
+    of the same person is better than eight of two.
+    """
+    if len(frames) < 8:
+        return frames
+    w = [d["tw"] * base / d["h"] for d in frames]
+    med = sorted(w)[len(w) // 2] or 1
+    spread = lambda v: (max(v) - min(v)) / med
+    full = spread(w)
+    if full < 0.10:
+        return frames
+    halves = [(spread(w[0::2]), frames[0::2]), (spread(w[1::2]), frames[1::2])]
+    best, keep = min(halves, key=lambda h: h[0])
+    return keep if best <= full * 0.67 else frames
+
+
+def body_w(im):
+    """How wide this person is, measured at the shoulders.
+
+    Not at the belly: a walking figure swings its arms across the waist, so the
+    silhouette there changes by a third within one cycle and it should. The
+    shoulders are the part that does not move, which makes them the only honest
+    place to ask whether the model drew the same body twice.
+    """
+    a = np.asarray(im)[:, :, 3] > 40
+    h = a.shape[0]
+    band = a[int(h * 0.26):int(h * 0.34)]
+    xs = np.nonzero(band.any(0))[0]
+    return int(xs.max() - xs.min() + 1) if len(xs) else 0
 
 
 def eye_line(im):
@@ -401,24 +465,106 @@ def eye_line(im):
     return p if 0.60 < p < 0.85 else None
 
 
+def _eye_blobs(im):
+    """The two whites of the eyes: the only pure white on a face."""
+    a = np.asarray(im).astype(int)
+    h = a.shape[0]
+    r, g, b, al = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
+    white = (al > 40) & (r > 215) & (g > 215) & (b > 210)
+    white[int(h * 0.32):] = False                  # a white shirt is not an eye
+    lab, n = ndimage.label(white)
+    found = [((lab == i).sum(), lab == i) for i in range(1, n + 1)]
+    found = [(s, m) for s, m in found if s >= 15]
+    found.sort(key=lambda t: -t[0])
+    return [m for _, m in found[:2]]
+
+
+def _lum(c):
+    return 0.3 * c[0] + 0.6 * c[1] + 0.1 * c[2]
+
+
+def nap(im):
+    """Make a sleeping frame out of a sitting one.
+
+    Five of the seven were never drawn asleep, and the room was showing them at
+    their keyboards with zZ over their heads, which is a picture of somebody
+    working, not sleeping. Redrawing them needs the model that drew the sheets;
+    until then this closes their eyes and lets the head nod, which is the whole
+    of what "asleep" looks like at this size.
+
+    Closing an eye means painting out the white and the pupil and laying a lid
+    across it. Behind glasses the white is the lens, not the eye, so there the
+    lens keeps its own colour and only what is dark inside it is painted out —
+    the frame the lens sits in tells the two cases apart.
+    """
+    a = np.asarray(im).copy().astype(int)
+    h, w = a.shape[:2]
+    for m in _eye_blobs(im):
+        ring = ndimage.binary_dilation(m, iterations=2) & ~m
+        rc = a[ring & (a[..., 3] > 200)][:, :3]
+        glasses = len(rc) and np.median([_lum(c) for c in rc]) < 95
+        ys, xs = np.nonzero(m)
+        x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
+        box = np.zeros((h, w), bool)
+        box[y0:y1 + 1, x0:x1 + 1] = True
+        if glasses:
+            fill = np.median(a[m][:, :3], axis=0)
+            dark = box & (a[..., 3] > 0) & (np.apply_along_axis(_lum, 2, a[..., :3]) < 130)
+            a[dark, :3] = fill
+            lid = (fill * 0.35).astype(int)
+        else:
+            band = a[min(h - 1, y1 + 2):min(h, y1 + 6), x0:x1 + 1]
+            skin = band[band[..., 3] > 200]
+            fill = np.median(skin[:, :3], axis=0) if len(skin) else np.array([230, 190, 160])
+            a[box & (a[..., 3] > 0), :3] = fill
+            lid = (fill * 0.5).astype(int)
+        my = (y0 + y1) // 2
+        for x in range(x0, x1 + 1):
+            t = (x - x0) / max(1, (x1 - x0))
+            yy = my + int(round(1.6 * math.sin(math.pi * t)))   # a shallow closed lid
+            for dy in (0, 1):
+                if 0 <= yy + dy < h and a[yy + dy, x, 3] > 0:
+                    a[yy + dy, x, :3] = lid
+    out = Image.fromarray(a.astype(np.uint8), "RGBA")
+    # and the head drops onto the shoulders. Moved down rather than rotated:
+    # turning a pixel face by a few degrees leaves it looking chewed.
+    neck = int(h * 0.34)
+    head = out.crop((0, 0, w, neck))
+    body = out.copy()
+    body.paste((0, 0, 0, 0), (0, 0, w, neck))
+    body.alpha_composite(head, (2, 5))
+    return body
+
+
 def chars(tag, scale):
     src = os.path.join(ART, "chars", tag)
     dst = os.path.join(OUT, "chars", tag)
     shutil.rmtree(dst, ignore_errors=True)
     os.makedirs(dst)
-    rows, eyes = {}, []
+    rows, eyes, sitting = {}, [], None
+
+    def keep(name, im):
+        im.quantize(colors=192, method=Image.FASTOCTREE).save(os.path.join(dst, name + ".png"))
+        return {"f": name, "w": im.width, "h": im.height, "ax": anchor_x(im),
+                "bw": body_w(im), "tw": torso_w(im)}
+
     for f in sorted(os.listdir(src)):
         if not f.endswith(".png"):
             continue
         im = shrink(dekey(Image.open(os.path.join(src, f)).convert("RGBA")))
-        im.quantize(colors=192, method=Image.FASTOCTREE).save(os.path.join(dst, f))
         row = f.split("_")[0]
-        rows.setdefault(row, []).append({"f": f[:-4], "w": im.width, "h": im.height,
-                                         "ax": anchor_x(im)})
+        rows.setdefault(row, []).append(keep(f[:-4], im))
+        if row == SIT and sitting is None:     # the pose the nap is built from
+            sitting = im
         if row == "r0":                        # the one row that faces the camera
             p = eye_line(im)
             if p:
                 eyes.append(p)
+
+    # nobody drew these five asleep, so the sitting pose is put to sleep instead
+    synth = SLEEP not in rows and sitting is not None
+    if synth:
+        rows[SLEEP] = [keep(SLEEP + "_00", nap(sitting))]
 
     def med(r):
         hs = sorted(d["h"] for d in rows[r])
@@ -428,7 +574,10 @@ def chars(tag, scale):
     out = {}
     for r in rows:
         rows[r].sort(key=lambda d: d["f"])
-        rel = scale.get(r, 1.0)
+        if r in WALK_ROWS:
+            rows[r] = steady(rows[r], base)
+        # a made-up sleeping frame is the sitting pose, so it is sized like one
+        rel = scale.get(SIT if (synth and r == SLEEP) else r, 1.0)
         # Every frame gets its own factor, so all eight of a walk come out the
         # same height. The model does not draw one person eight times: within a
         # single row it drew this one 13 % shorter and hunched, and one factor
@@ -438,6 +587,8 @@ def chars(tag, scale):
         for d in rows[r]:
             d["k"] = round(rel * base / d["h"], 4)
         out[r] = {"k": round(rel * base / med(r), 4), "f": rows[r]}
+        if r in WITH_CHAIR.get(tag, ()):
+            out[r]["chair"] = True      # this pose comes with its own seat
     # ...except a reaction, where changing shape is the whole point: a stretch
     # reaches up and is meant to be taller, and holding that to one height
     # shrinks the person for exactly as long as they stretch.
@@ -477,7 +628,64 @@ def cast(scale):
                     if "k" in d:
                         d["k"] = round(d["k"] * fix, 4)
             c.pop("p")
+    widths(out)
     return out
+
+
+def widths(cast):
+    """Hold every frame of a person to the same build.
+
+    Height was already held still; width was not, and the model treated it as a
+    free hand. The same man is drawn a third wider halfway through his own walk
+    and a fifth narrower the moment he turns a corner, which on screen reads as
+    somebody who keeps gaining and losing weight.
+
+    The correction is one factor for the whole row, not one per frame: a walk
+    cycle's own flicker is dealt with by dropping the frames that disagree, and
+    stretching each frame separately on top of that only adds a wobble of its
+    own. What is left to fix is the step between views — the same person a fifth
+    narrower the moment he turns — and the target for a view is the cast's own
+    median ratio of that view to the front, so a profile stays properly narrower
+    than a front view without any one sheet's mistake setting the rule. It is
+    capped: past a point the drawing is wrong in a way stretching cannot mend.
+    """
+    CAP = (0.86, 1.16)
+
+    def med(vals):
+        v = sorted(vals)
+        return v[len(v) // 2] if v else 0
+
+    def rowsize(c, r):
+        row = c["rows"][r]
+        return med([d["bw"] * (d.get("k", row["k"])) for d in row["f"] if d["bw"]])
+
+    front = {t: rowsize(c, "r0") for t, c in cast.items() if "r0" in c["rows"]}
+    # what each view measures against the front view, as the whole cast agrees
+    rho = {}
+    for t, c in cast.items():
+        for r in c["rows"]:
+            if r == REACT or r in WITH_CHAIR.get(t, ()) or not front.get(t):
+                continue
+            s = rowsize(c, r)
+            if s:
+                rho.setdefault(r, []).append(s / front[t])
+    rho = {r: med(v) for r, v in rho.items()}
+
+    for t, c in cast.items():
+        if not front.get(t):
+            continue
+        for r, row in c["rows"].items():
+            if r == REACT or r in WITH_CHAIR.get(t, ()) or r not in rho:
+                continue
+            want, have = front[t] * rho[r], rowsize(c, r)
+            if have:
+                row["xk"] = round(min(CAP[1], max(CAP[0], want / have)), 4)
+    for c in cast.values():
+        for row in c["rows"].values():
+            for d in row["f"]:
+                d.pop("bw", None)
+                d.pop("tw", None)
+    return cast
 
 
 def build():
@@ -503,12 +711,18 @@ def build():
     props.sort(key=lambda p: (p["z"], p["y"]))
 
     grid = blocked_grid(items, m)
+    spot = snap(spots(items, m, t), grid)
+    # the chair each desk owns, as an index into the drawing order
+    where = {(p["a"], p["x"], p["y"]): i for i, p in enumerate(props)}
+    for d in spot["desks"]:
+        ch = d.pop("chair", None)
+        d["chairIdx"] = where.get(("chair", ch["x"], ch["y"]), -1) if ch else -1
     scene = {
         "world": [m["w"], m["h"]],
         "cell": CELL,
         "grid": ["".join(str(v) for v in row) for row in grid],
         "props": props,
-        "spots": snap(spots(items, m, t), grid),
+        "spots": spot,
         "chars": cast(t.get("rowScale", {})),
         "stand": t.get("stand", 140),
     }
