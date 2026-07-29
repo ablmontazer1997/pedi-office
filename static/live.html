@@ -938,7 +938,14 @@ function frame(now){
         cx.beginPath(); cx.ellipse(px, py, cw * 0.32, cw * 0.14, 0, 0, 6.284); cx.fill();
         cx.globalAlpha = 1;
       }
-      cx.drawImage(sp, Math.round(px) - ox, Math.round(py - ch), cw, ch);
+      // a seat may want the sitter the other way round: the armchair faces
+      // south west and the pose was only drawn facing south east
+      if (A.seat && A.seat.flip) {
+        cx.save();
+        cx.translate(Math.round(px), 0); cx.scale(-1, 1);
+        cx.drawImage(sp, -(cw - ox), Math.round(py - ch), cw, ch);
+        cx.restore();
+      } else cx.drawImage(sp, Math.round(px) - ox, Math.round(py - ch), cw, ch);
     }});
   }
 

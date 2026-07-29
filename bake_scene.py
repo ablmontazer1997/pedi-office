@@ -248,9 +248,12 @@ def spots(items, m, t):
                     "sit": {"x": round(x + sx + dx * k), "y": round(y + sy + dy * k),
                             "sortY": y + 2 - k, "z": it.get("z", 0)}})
         elif a == "single-couch":
+            # This one is turned the other way: it opens to the south west, so
+            # whoever sits in it is drawn mirrored. The sitting pose was only
+            # ever drawn facing south east.
             cx0, cy0 = t.get("couch", {}).get("sit", [4, -18])
             out["seats"].append({"walk": {"x": x - 104, "y": y + 12},
-                                 "sit": {"x": x + cx0, "y": y + cy0,
+                                 "sit": {"x": x + cx0, "y": y + cy0, "flip": True,
                                          "sortY": y + 2, "z": it.get("z", 0)}})
         elif a.startswith("coffee") and out["coffee"] is None:
             # `coffee-frame` is the neon sign on the wall, not the counter: stand
