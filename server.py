@@ -27,12 +27,14 @@ PORT = int(os.environ.get("BOTWORLD_PORT", "9271"))
 TOKEN = open(os.path.join(HERE, "token.txt")).read().strip()
 
 # (tmux socket / session name, display name, owner, accent colour)
+# The order is also the casting: the room hands its characters out down this
+# list, so moving a name moves which body it wears.
 BOTS = [
     ("gorzali", "Gorz Ali", "گرز علی", "#7cc4ff"),
-    ("sami", "Sami", "سمی", "#5ef08a"),
-    ("bijan", "Bijan", "بیژن", "#c77dff"),
-    ("kiomars", "Kiomars", "کیومرث", "#ffb020"),
     ("mardhesabi", "Mard Hesabi", "مرد حسابی", "#ff6b6b"),
+    ("bijan", "Bijan", "بیژن", "#c77dff"),
+    ("kolsoom", "Kolsoom Akbari", "کلثوم اکبری", "#ffb020"),
+    ("sami", "Sami", "سمی", "#5ef08a"),
     ("tom", "Tom", "تام", "#4ecdc4"),
 ]
 

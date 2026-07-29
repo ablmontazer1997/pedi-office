@@ -125,6 +125,7 @@ def blocked_grid(items, m):
                 grid[gy, gx] = 1
 
     ratio = m["th"] / m["tw"]
+    hard = np.zeros_like(grid)     # what a piece of furniture actually stands on
     for it in items:
         sp = Image.open(os.path.join(OUT, "assets", it["asset"] + ".png")).convert("RGBA")
         if it.get("flip"):
@@ -139,6 +140,15 @@ def blocked_grid(items, m):
         # sprite instead treated a monitor as if it were floor, and the desk's
         # real footprint as if it were air.
         span = cols[-1] - cols[0] + 1
+        # A rug is its own floor tile and nothing more: as tall in the picture as
+        # the diamond it covers. A table is half as wide again in picture as it
+        # is in floor, because it has legs and a top. Anything close to flat is
+        # something you walk on, not into — which is what the editor was being
+        # used to say by hand, and those hand marks were opening the tables
+        # standing on the rugs along with them.
+        flat = sp.height <= span * ratio * 1.35
+        if flat:
+            continue
         diamond = sp.height - int(round(span * ratio)) - 4
         # ...and then a little more. A desk is only 74 px of floor but 151 px of
         # picture, so someone standing just behind its diamond is buried up to
@@ -153,7 +163,7 @@ def blocked_grid(items, m):
             continue
         for cx, cy in zip((left + xs) // CELL, (top + y0 + ys) // CELL):
             if 0 <= cy < gh and 0 <= cx < gw:
-                grid[cy, cx] = 1
+                grid[cy, cx] = hard[cy, cx] = 1
 
     # every obstacle is inflated by half a body, which is the standard way to
     # plan for something wider than the cell it is tracked in: the feet then
@@ -172,6 +182,10 @@ def blocked_grid(items, m):
     for gx, gy in hand.get("open", []):
         if 0 <= gy < grown.shape[0] and 0 <= gx < grown.shape[1]:
             grown[gy, gx] = 0
+    # ...but a hand may only open the clearance around a thing, never the thing
+    # itself. Opening the floor under a table is how people ended up walking
+    # through the one in front of the sofa.
+    grown[hard == 1] = 1
 
     # keep only the floor you can actually walk on: the pockets left between a
     # sofa and a rug are "free" cells the pathfinder can never reach, and a
