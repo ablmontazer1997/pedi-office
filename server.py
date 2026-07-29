@@ -30,12 +30,12 @@ TOKEN = open(os.path.join(HERE, "token.txt")).read().strip()
 # The order is also the casting: the room hands its characters out down this
 # list, so moving a name moves which body it wears.
 BOTS = [
-    ("gorzali", "Gorz Ali", "گرز علی", "#7cc4ff"),
+    ("tom", "Tom", "تام", "#4ecdc4"),
     ("mardhesabi", "Mard Hesabi", "مرد حسابی", "#ff6b6b"),
     ("bijan", "Bijan", "بیژن", "#c77dff"),
     ("kolsoom", "Kolsoom Akbari", "کلثوم اکبری", "#ffb020"),
     ("sami", "Sami", "سمی", "#5ef08a"),
-    ("tom", "Tom", "تام", "#4ecdc4"),
+    ("gorzali", "Gorz Ali", "گرز علی", "#7cc4ff"),
 ]
 
 # These three are systemd units with Restart=always. Stopping them needs root,

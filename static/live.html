@@ -547,6 +547,33 @@ function step(A, dt, now){
   if (now > A.until) { A.t = 0; plan(A, now); }
 }
 
+/* Nobody walks through anybody either. Two people who end up standing in the
+   same place are eased apart, half the overlap each, and only onto floor they
+   could have walked to anyway. Nothing is done to either path, so whoever was
+   on his way somewhere still gets there - he goes round. The gap is measured on
+   the floor rather than on the screen: a step sideways covers two and a half
+   times the ground a step up or down does, so a plain distance in pixels would
+   have them elbowing each other from across the room. */
+const NEAR = 30, SQUASH = 2.5;
+
+function nudge(A, dx, dy){
+  const x = A.x + dx, y = A.y + dy;
+  if (free(Math.floor(x / CELL), Math.floor(y / CELL))) { A.x = x; A.y = y; }
+}
+
+function jostle(crew){
+  for (let i = 0; i < crew.length; i++)
+    for (let j = i + 1; j < crew.length; j++) {
+      const a = crew[i], b = crew[j];
+      if (a.seat || b.seat) continue;
+      const dx = b.x - a.x, dy = (b.y - a.y) * SQUASH, d = Math.hypot(dx, dy);
+      if (d >= NEAR || d < 0.01) continue;
+      const p = (NEAR - d) / 2 / d;
+      nudge(a, -dx * p, -dy * p / SQUASH);
+      nudge(b, dx * p, dy * p / SQUASH);
+    }
+}
+
 /* -------------------------------------------------------------- name plates */
 /* Everyone in the room stands for one of the bots on this box, so each of them
    carries that bot's state over their head. The list comes from the same
@@ -868,6 +895,67 @@ function zzz(g, px, top, t){
   g.globalAlpha = 1;
 }
 
+/* --------------------------------------------------------------- depth sort
+
+   Sorting the room by one y per sprite is only right for a dot on the floor. A
+   desk covers a stretch of floor, so somebody walking past its left side and
+   somebody standing behind it can share a y and still belong on opposite sides
+   of it. Every piece therefore carries the patch of floor it stands on, as a
+   box along the floor's own two axes, and the room is ordered by asking of each
+   pair which one is nearer: nearer along either axis, with no overlap on that
+   axis, settles it. Only two things sharing the same floor - a rug under a
+   table, a lamp over the boards it lights, a typist at his own desk - fall
+   through to the layer number. */
+const TILE = () => S.tile || [45, 18];
+
+function spotOf(x, y, r){
+  const [tw, th] = TILE();
+  const u = (x / tw + y / th) / 2, v = (y / th - x / tw) / 2;
+  r = r === undefined ? 0.28 : r;
+  return [u - r, u + r, v - r, v + r];
+}
+
+/* do the two sprites share any pixels at all? Two pieces that never touch on
+   screen cannot hide each other, and asking which is in front of the other
+   invents an order between them that has no meaning - the coffee table came out
+   under its own rug because a chair on the far side of the room was "nearer"
+   along one axis and dragged the two of them into a loop. */
+function meets(a, b){
+  return a.r[0] < b.r[2] && b.r[0] < a.r[2] && a.r[1] < b.r[3] && b.r[1] < a.r[3];
+}
+
+/* does `a` have to be painted before `b`? */
+function under(a, b){
+  const p = a.fp, q = b.fp;
+  if (p && q) {
+    if (p[0] >= q[1]) return false;         // a is further down one axis: nearer
+    if (q[0] >= p[1]) return true;
+    if (p[2] >= q[3]) return false;         // ...or down the other
+    if (q[2] >= p[3]) return true;
+  }
+  return (a.z - b.z || a.y - b.y) < 0;      // same floor: the layer decides
+}
+
+function depthSort(list){
+  const out = [], seen = new Array(list.length).fill(0);
+  // depth first, so a thing goes down only after everything it stands behind.
+  // `seen` is set on the way in as well as on the way out, which is what keeps
+  // a ring of three pieces that each overlap the next from looping forever.
+  const visit = i => {
+    if (seen[i]) return;
+    seen[i] = 1;
+    for (let j = 0; j < list.length; j++)
+      if (j !== i && !seen[j] && meets(list[j], list[i]) && under(list[j], list[i]))
+        visit(j);
+    out.push(list[i]);
+  };
+  // start from the back so the common case comes out in one pass
+  const order = list.map((o, i) => i)
+                    .sort((i, j) => (list[i].z - list[j].z) || (list[i].y - list[j].y));
+  for (const i of order) visit(i);
+  return out;
+}
+
 /* ------------------------------------------------------------------ drawing */
 let CREW = null;
 
@@ -894,6 +982,7 @@ function frame(now){
   if (!frame.last) frame.last = now;
   const dt = Math.min(0.05, now - frame.last); frame.last = now;
   for (const A of CREW) step(A, dt, now * 1000);
+  jostle(CREW);
 
   cx.clearRect(0, 0, W, H);
   cx.drawImage(IMG.bg, 0, 0);
@@ -907,14 +996,18 @@ function frame(now){
     if (A.seat && r && r.chair && A.spot && A.spot.chairIdx >= 0) spare.add(A.spot.chairIdx);
   }
 
-  const list = S.props.map((p, pi) => ({y: p.y, z: p.z, run: () => {
+  const list = S.props.map((p, pi) => {
+    const im = IMG["a:" + p.a], iw = im ? im.width : 0, ih = im ? im.height : 0;
+    return {fp: p.fp, y: p.y, z: p.z,
+            r: [p.x - iw / 2, p.y - ih, p.x + iw / 2, p.y], run: () => {
     if (spare.has(pi)) return;
-    const im = IMG["a:" + p.a]; if (!im) return;
+    if (!im) return;
     cx.save();
     if (p.flip) { cx.translate(Math.round(p.x), 0); cx.scale(-1, 1); cx.translate(-Math.round(p.x), 0); }
     cx.drawImage(im, Math.round(p.x - im.width / 2), Math.round(p.y - im.height));
     cx.restore();
-  }}));
+  }};
+  });
 
   const plates = [];
   HITS = [];
@@ -931,7 +1024,10 @@ function frame(now){
     const ox = Math.round((meta.ax !== undefined ? meta.ax : meta.w / 2) * kx);
     if (WHOSE[A.tag])
       HITS.push({tag: A.tag, x0: px - ox, y0: py - ch, x1: px - ox + cw, y1: py});
-    list.push({y: A.seat ? A.seat.sortY : A.y, z: (A.seat && A.seat.z) || 0, run: () => {
+    list.push({fp: A.seat ? (A.seat.fp || spotOf(px, py)) : spotOf(px, py),
+               y: A.seat ? A.seat.sortY : A.y,
+               z: A.seat ? (A.seat.dz || 0) : 0,
+               r: [px - ox, py - ch, px - ox + cw, py], run: () => {
       if (!sp) return;
       if (!A.seat) {
         cx.globalAlpha = .22; cx.fillStyle = "#000";
@@ -949,7 +1045,7 @@ function frame(now){
     }});
   }
 
-  list.sort((a, b) => (a.z - b.z) || (a.y - b.y)).forEach(o => o.run());
+  depthSort(list).forEach(o => o.run());
   // after everything else: a name plate belongs to the viewer, not to the room,
   // so a desk in front of somebody must not eat half of it
   for (const p of plates) plate(cx, p.A, p.px, p.top);

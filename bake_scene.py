@@ -112,6 +112,50 @@ def _base_y(m, x):
     return m["cy"] + abs(x - m["cx"]) * (m["th"] / m["tw"])
 
 
+def _uv(x, y, m):
+    """screen point -> the floor's own two axes
+
+    The floor runs along (tw, th) and (-tw, th), so a point is u tiles down one
+    of them and v down the other. Distance from the eye is u + v, which is why
+    sorting by screen y works at all for a dot on the floor; the whole point of
+    keeping u and v apart is that a *thing* covers a range of both, and two
+    things side by side along one axis do not hide each other whatever their
+    y says.
+    """
+    u = (x / m["tw"] + y / m["th"]) / 2.0
+    v = (y / m["th"] - x / m["tw"]) / 2.0
+    return u, v
+
+
+def footprint(it, m):
+    """the floor a piece of furniture stands on, as a box in (u, v)
+
+    An isometric sprite is its floor tile swept upwards: the ground is the
+    diamond at the bottom, as tall in the picture as the sprite is wide times
+    the room's ratio. That diamond is a rectangle on the floor, so its four
+    extremes give the range of u and of v the piece occupies.
+    """
+    sp = Image.open(os.path.join(OUT, "assets", it["asset"] + ".png")).convert("RGBA")
+    if it.get("flip"):
+        sp = sp.transpose(Image.FLIP_LEFT_RIGHT)
+    a = np.asarray(sp)[:, :, 3] > 40
+    cols = np.nonzero(a.any(0))[0]
+    if not len(cols):
+        return None
+    ratio = m["th"] / m["tw"]
+    span = int(cols[-1] - cols[0] + 1)
+    left = it["x"] - sp.width / 2.0 + cols[0]
+    right = left + span
+    deep = min(span * ratio, sp.height)
+    y1, y0 = float(it["y"]), it["y"] - deep
+    mid = (y0 + y1) / 2.0
+    pts = [_uv(left, mid, m), _uv(right, mid, m),
+           _uv((left + right) / 2.0, y0, m), _uv((left + right) / 2.0, y1, m)]
+    us = [p[0] for p in pts]
+    vs = [p[1] for p in pts]
+    return [round(min(us), 3), round(max(us), 3), round(min(vs), 3), round(max(vs), 3)]
+
+
 def blocked_grid(items, m):
     W, H = m["w"], m["h"]
     gw, gh = W // CELL, H // CELL
@@ -241,7 +285,11 @@ def spots(items, m, t):
             # drawn after its chair and before its desk, so the chair is behind
             # the body and the desk still hides the legs
             out["desks"].append({"walk": walk,
-                                 "sit": {"x": seat["x"], "y": seat["y"], "sortY": y - 1},
+                                 "sit": {"x": seat["x"], "y": seat["y"], "sortY": y - 1,
+                                         # he is on the desk's own patch of floor,
+                                         # so nothing but the layer tells them
+                                         # apart: he goes just under it
+                                         "fp": footprint(it, m), "dz": -0.5},
                                  # which chair this desk owns, so the page can take
                                  # it away for the poses that bring their own
                                  "chair": {"x": ch["x"], "y": ch["y"]} if ch else None})
@@ -260,7 +308,10 @@ def spots(items, m, t):
                 out["seats"].append({
                     "walk": {"x": x + 176, "y": y + 6},
                     "sit": {"x": round(x + sx + dx * k), "y": round(y + sy + dy * k),
-                            "sortY": y + 2 - k, "z": it.get("z", 0)}})
+                            "sortY": y + 2 - k, "fp": footprint(it, m),
+                            # all three share the sofa's floor, so the layer is
+                            # all that keeps the near cushion in front
+                            "dz": round(0.5 - 0.02 * k, 3)}})
         elif a == "single-couch":
             # This one is turned the other way: it opens to the south west, so
             # whoever sits in it is drawn mirrored. The sitting pose was only
@@ -268,7 +319,8 @@ def spots(items, m, t):
             cx0, cy0 = t.get("couch", {}).get("sit", [4, -18])
             out["seats"].append({"walk": {"x": x - 104, "y": y + 12},
                                  "sit": {"x": x + cx0, "y": y + cy0, "flip": True,
-                                         "sortY": y + 2, "z": it.get("z", 0)}})
+                                         "sortY": y + 2, "fp": footprint(it, m),
+                                         "dz": 0.5}})
         elif a.startswith("coffee") and out["coffee"] is None:
             # `coffee-frame` is the neon sign on the wall, not the counter: stand
             # in front of whatever piece of furniture is under it, otherwise the
@@ -714,16 +766,14 @@ def build():
     props = [{"a": it["asset"], "x": it["x"], "y": it["y"],
               "z": it.get("z", 0), "flip": bool(it.get("flip"))} for it in items]
 
-    # The editor lifted the sofa to z=1, which also lifts it over the coffee
-    # table standing in front of it — and over anyone sitting on it. Anything
-    # that stands closer to the viewer than the sofa and overlaps it is pushed
-    # one layer higher so the table keeps its place in front.
-    sofa = next((p for p in props if p["a"] == "sofa"), None)
-    if sofa:
-        for p in props:
-            if p is not sofa and p["z"] >= 0 and sofa["y"] < p["y"] < sofa["y"] + 130 \
-               and abs(p["x"] - sofa["x"]) < 210:
-                p["z"] = sofa["z"] + 1
+    # Every piece carries the floor it stands on, and the page sorts the room
+    # from that rather than from one y per sprite. The layer is only the
+    # tie-break for things sharing the same floor: a rug under a table, a lamp
+    # on a wall over the boards it lights.
+    for p, it in zip(props, items):
+        fp = footprint(it, m)
+        if fp:
+            p["fp"] = fp
 
     props.sort(key=lambda p: (p["z"], p["y"]))
 
@@ -736,6 +786,7 @@ def build():
         d["chairIdx"] = where.get(("chair", ch["x"], ch["y"]), -1) if ch else -1
     scene = {
         "world": [m["w"], m["h"]],
+        "tile": [m["tw"], m["th"]],
         "cell": CELL,
         "grid": ["".join(str(v) for v in row) for row in grid],
         "props": props,
