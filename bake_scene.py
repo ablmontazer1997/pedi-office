@@ -285,11 +285,14 @@ def spots(items, m, t):
             # drawn after its chair and before its desk, so the chair is behind
             # the body and the desk still hides the legs
             out["desks"].append({"walk": walk,
+                                 # He is on the desk's own patch of floor, so
+                                 # nothing geometric separates the two of them
+                                 # and the depth key is what places him: after
+                                 # the chair he is sitting on, which stands a
+                                 # little further back, and before the desk,
+                                 # which still has to hide his legs.
                                  "sit": {"x": seat["x"], "y": seat["y"], "sortY": y - 1,
-                                         # he is on the desk's own patch of floor,
-                                         # so nothing but the layer tells them
-                                         # apart: he goes just under it
-                                         "fp": footprint(it, m), "dz": -0.5},
+                                         "fp": footprint(it, m)},
                                  # which chair this desk owns, so the page can take
                                  # it away for the poses that bring their own
                                  "chair": {"x": ch["x"], "y": ch["y"]} if ch else None})
