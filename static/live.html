@@ -4,14 +4,85 @@
 <style>
   html,body{height:100%;margin:0;background:#07060c;color:#8f82ab;
     font:12px ui-monospace,Menlo,Consolas,monospace;overflow:hidden}
-  #wrap{position:absolute;inset:0;display:grid;place-items:center}
+  #wrap{position:absolute;inset:0;right:322px;display:grid;place-items:center}
   canvas{image-rendering:pixelated;display:block}
   #hud{position:absolute;left:10px;top:10px;background:rgba(12,9,20,.8);
     border:1px solid #2f2646;border-radius:5px;padding:6px 9px;letter-spacing:1px}
   #hud b{color:#b57bff;font-weight:400}
+
+  /* the console down the right: the machine this office runs on, the bots the
+     people in it stand for, and whether the uplink is up */
+  #side{position:absolute;top:12px;right:12px;bottom:12px;width:298px;
+    overflow:auto;display:flex;flex-direction:column;gap:14px}
+  #side h3{margin:0;padding:0 2px 7px;font-size:11px;font-weight:400;
+    letter-spacing:2.4px;color:#b57bff;display:flex;align-items:center;
+    cursor:pointer;user-select:none}
+  #side h3 .cv{margin-left:auto;color:#6b5f85;transition:transform .12s}
+  #side h3.shut .cv{transform:rotate(-90deg)}
+  #side h3.shut + .body{display:none}
+  .card{background:rgba(12,9,20,.82);border:1px solid #2f2646;border-radius:6px;
+    padding:8px 10px;margin-bottom:7px}
+  .card .hd{display:flex;align-items:center;gap:9px}
+  .card .lb{flex:1;letter-spacing:1.6px;color:#c3b7e0}
+  .card .vl{color:#ece5f7;font-size:13px}
+  .card .sub{font-size:10px;color:#6b5f85;margin-top:3px;letter-spacing:1px}
+  canvas.ico{width:18px;height:18px;flex:none;image-rendering:pixelated}
+  canvas.spk{display:block;width:100%;height:18px;margin-top:6px;
+    image-rendering:pixelated;opacity:.9}
+  .bot{display:flex;align-items:center;gap:9px;padding:7px 10px;cursor:pointer;
+    border:1px solid transparent;border-radius:6px}
+  .bot:hover{border-color:#2f2646;background:rgba(12,9,20,.82)}
+  .bot .n{color:#b57bff;width:12px}
+  .bot .nm{flex:1;color:#c3b7e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bot .st{font-size:10px;letter-spacing:1.6px}
+  .bot i{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block}
+  #uplink{display:flex;align-items:center;gap:9px}
+  #uplink .big{flex:1;letter-spacing:1.6px;font-size:13px}
+  #uplink .code{font-size:10px;color:#6b5f85}
+  @media (max-width:1150px){#side{display:none}#wrap{right:0}}
 </style></head><body>
 <div id="wrap"><canvas id="cv"></canvas></div>
 <div id="hud"><b id="act">…</b></div>
+
+<div id="side">
+  <section>
+    <h3>SYSTEM STATUS<span class="cv">▾</span></h3>
+    <div class="body">
+      <div class="card">
+        <div class="hd"><canvas class="ico" id="iCpu" width="9" height="9"></canvas>
+          <span class="lb">CPU</span><span class="vl" id="sCpu">–</span></div>
+        <canvas class="spk" id="kCpu" width="140" height="18"></canvas>
+      </div>
+      <div class="card">
+        <div class="hd"><canvas class="ico" id="iRam" width="9" height="9"></canvas>
+          <span class="lb">RAM</span><span class="vl" id="sRam">–</span></div>
+        <canvas class="spk" id="kRam" width="140" height="18"></canvas>
+      </div>
+      <div class="card">
+        <div class="hd"><canvas class="ico" id="iDisk" width="9" height="9"></canvas>
+          <span class="lb">DISK</span><span class="vl" id="sDisk">–</span></div>
+        <div class="sub" id="sDiskF"></div></div>
+      <div class="card">
+        <div class="hd"><canvas class="ico" id="iLoad" width="9" height="9"></canvas>
+          <span class="lb">LOAD</span><span class="vl" id="sLoad">–</span></div>
+        <div class="sub" id="sCores"></div></div>
+      <div class="card">
+        <div class="hd"><canvas class="ico" id="iUp" width="9" height="9"></canvas>
+          <span class="lb">UPTIME</span><span class="vl" id="sUp">–</span></div></div>
+    </div>
+  </section>
+  <section>
+    <h3>BOTS STATUS<span class="cv">▾</span></h3>
+    <div class="body" id="blist"></div>
+  </section>
+  <section>
+    <h3>API CONNECTION<span class="cv">▾</span></h3>
+    <div class="body"><div class="card"><div id="uplink">
+      <canvas class="ico" id="iApi" width="9" height="9"></canvas>
+      <span class="big" id="sApi">…</span><span class="code" id="sApiC"></span>
+    </div></div></div>
+  </section>
+</div>
 <script>
 const cv = document.getElementById("cv"), cx = cv.getContext("2d");
 
@@ -64,7 +135,8 @@ async function boot(){
 }
 
 function fit(){
-  SCALE = Math.min(innerWidth / W, innerHeight / H);
+  const box = document.getElementById("wrap").getBoundingClientRect();
+  SCALE = Math.min(box.width / W, box.height / H);
   const dpr = Math.min(2, devicePixelRatio || 1);
   cv.width = Math.round(W * SCALE * dpr); cv.height = Math.round(H * SCALE * dpr);
   cv.style.width = (W * SCALE) + "px"; cv.style.height = (H * SCALE) + "px";
@@ -207,19 +279,40 @@ function goto(A, spot, then, now){
 
 const ONLY = new URLSearchParams(location.search).get("only");
 
+/* What the room may do is decided by the bot each person stands for. A running
+   turn puts them at their own desk and keeps them there; no session at all puts
+   them asleep in that same chair; only an idle bot is free to roam. Everything
+   here is measured in minutes rather than seconds, because an office where
+   everyone changes seat every ten seconds does not read as an office. */
+function mode(A){
+  const b = WHOSE[A.tag], st = b ? b.state : "idle";
+  return (st === "running" || st === "error") ? "work" : st === "off" ? "sleep" : "free";
+}
+// everybody has one desk, their own, and it is the only desk they ever use
+function myDesk(A){
+  const i = CAST.indexOf(A.tag);
+  return S.spots.desks.length ? S.spots.desks[i % S.spots.desks.length] : null;
+}
+
 function plan(A, now){
   A.seat = null; release(A);
+  const m = A.mode = mode(A);
+  const desk = myDesk(A);
+  if (m !== "free" && desk) return goto(A, desk, m, now);
+
+  // Off duty. Half the time whatever they are already doing simply goes on for
+  // another while, so leaving the seat stays the exception.
+  if ((A.state === "sofa" || A.state === "drink" || A.state === "type") && rnd() < 0.5) {
+    A.until = now + 40000 + rnd() * 80000;
+    return;
+  }
   const r = ONLY === "sofa" ? 0 : ONLY === "coffee" ? .3 : ONLY === "desk" ? .6 : ONLY === "look" ? .9 : rnd();
-  if (r < 0.24 && S.spots.sofa && !busy.sofa) {
+  if (r < 0.22 && S.spots.sofa && !busy.sofa) {
     busy.sofa = A; goto(A, S.spots.sofa, "sofa", now);
-  } else if (r < 0.44 && S.spots.coffee && !busy.coffee) {
+  } else if (r < 0.40 && S.spots.coffee && !busy.coffee) {
     busy.coffee = A; goto(A, S.spots.coffee, "coffee", now);
-  } else if (r < 0.82 && S.spots.desks.length) {
-    const openDesks = S.spots.desks.map((d, i) => i).filter(i => !busy.desks[i]);
-    if (openDesks.length) {
-      const i = openDesks[Math.floor(rnd() * openDesks.length)];
-      busy.desks[i] = A; goto(A, S.spots.desks[i], "desk", now);
-    } else wander(A, now);
+  } else if (r < 0.84 && desk) {
+    goto(A, desk, "desk", now);
   } else wander(A, now);
 }
 
@@ -236,10 +329,12 @@ function arrive(A, now){
   // sitting down moves him off the walkable cell and onto the furniture, with
   // the depth key that furniture needs
   A.seat = (A.spot && A.spot.sit && what !== "look") ? A.spot.sit : null;
-  if (what === "sofa")        { A.state = "sofa";  A.until = now + 9000 + rnd() * 9000; A.act = "on the sofa"; }
-  else if (what === "coffee") { A.state = "drink"; A.until = now + 6000 + rnd() * 4000; A.act = "coffee"; }
-  else if (what === "desk")   { A.state = "type";  A.until = now + 10000 + rnd() * 12000; A.act = "typing"; }
-  else { A.state = "react"; A.until = now + 3200; A.emote = 1 + Math.floor(rnd() * 7); A.act = "…"; release(A); }
+  if (what === "work")        { A.state = "type";  A.until = now + 120000 + rnd() * 120000; A.act = "working"; }
+  else if (what === "sleep")  { A.state = "sleep"; A.until = now + 180000 + rnd() * 180000; A.act = "asleep"; }
+  else if (what === "sofa")   { A.state = "sofa";  A.until = now + 40000 + rnd() * 60000; A.act = "on the sofa"; }
+  else if (what === "coffee") { A.state = "drink"; A.until = now + 25000 + rnd() * 35000; A.act = "coffee"; }
+  else if (what === "desk")   { A.state = "type";  A.until = now + 60000 + rnd() * 90000; A.act = "typing"; }
+  else { A.state = "react"; A.until = now + 9000 + rnd() * 9000; A.emote = 1 + Math.floor(rnd() * 7); A.act = "…"; release(A); }
 }
 
 function step(A, dt, now){
@@ -263,6 +358,10 @@ function step(A, dt, now){
   if (A.state === "sofa")  { A.row = has(ROW.sofa) ? ROW.sofa : ROW.mug;  A.fi = Math.floor(A.t * 3); }
   if (A.state === "drink") { A.row = has(ROW.drink) ? ROW.drink : ROW.mug; A.fi = Math.floor(A.t * 4); }
   if (A.state === "type")  { A.row = ROW.type;  A.fi = Math.floor(A.t * 5); }
+  // only one sheet was drawn with a sleeping row; for everyone else it is the
+  // typing pose held still, which with the zZ over the head reads the same
+  if (A.state === "sleep") { const s = has(ROW.sleep);
+                             A.row = s ? ROW.sleep : ROW.type; A.fi = s ? Math.floor(A.t * 2) : 0; }
   if (A.state === "react") { A.row = ROW.react; A.fi = A.emote; }
   if (now > A.until) { A.t = 0; plan(A, now); }
 }
@@ -294,16 +393,102 @@ const ICON = {
             "    X    ", "         ", "    X    ", "         "],
 };
 
+let MACHINE = {}, UPLINK = {};
+
 async function bots(){
   try {
     const d = await (await fetch("api/status", {cache: "no-store"})).json();
     BOTS = d.bots || [];
+    MACHINE = d.machine || {}; UPLINK = d.api || {};
     // one bot per character, in a fixed order, so nobody swaps identity between
     // polls; any character left over is simply somebody who works here
     WHOSE = {};
     CAST.forEach((tag, i) => { if (BOTS[i]) WHOSE[tag] = BOTS[i]; });
+    // a bot that just started a turn does not wait out its coffee break
+    if (CREW) for (const A of CREW)
+      if (A.mode !== undefined && mode(A) !== A.mode) plan(A, performance.now());
+    board();
   } catch (e) { /* the room keeps running without the dashboard */ }
 }
+
+/* ------------------------------------------------------------- the console */
+// 9x9 glyphs in the same spirit as the state icons above: pixel art, not a font
+const SICON = {
+  cpu :["  XXXXX  ","  X   X  ","XXX   XXX","  X X X  ","XXX X XXX",
+        "  X   X  ","  XXXXX  ","         ","         "],
+  ram :["XXXXXXXXX","X X X X X","X X X X X","X X X X X","XXXXXXXXX",
+        "  X   X  ","         ","         ","         "],
+  disk:["XXXX     ","X   XXXXX","X       X","X  XXX  X","X       X",
+        "XXXXXXXXX","         ","         ","         "],
+  load:["  XXXXX  "," X     X ","X   X   X","X  X    X","X       X",
+        " X     X ","  XXXXX  ","         ","         "],
+  up  :["  XXXXX  "," X     X ","X   X   X","X   X   X","X   XXX X",
+        " X     X ","  XXXXX  ","         ","         "],
+  api :["  XXXXX  "," X  X  X ","X   X   X","XXXXXXXXX","X   X   X",
+        " X  X  X ","  XXXXX  ","         ","         "],
+};
+function glyph(id, key, col){
+  const c = document.getElementById(id); if (!c) return;
+  const g = c.getContext("2d");
+  g.clearRect(0, 0, 9, 9); g.fillStyle = col;
+  SICON[key].forEach((row, r) => [...row].forEach((ch, b) => { if (ch === "X") g.fillRect(b, r, 1, 1); }));
+}
+const HIST = {cpu: [], ram: []};
+function spark(id, arr, col){
+  const c = document.getElementById(id); if (!c) return;
+  const g = c.getContext("2d"), w = c.width, h = c.height;
+  g.clearRect(0, 0, w, h);
+  const n = Math.floor(w / 3);
+  arr.slice(-n).forEach((v, i) => {
+    const bh = Math.max(1, Math.round(v / 100 * (h - 1)));
+    g.fillStyle = col; g.fillRect(i * 3, h - bh, 2, bh);
+  });
+}
+let glyphsDrawn = false;
+function board(){
+  const m = MACHINE;
+  if (m.cpu != null) { HIST.cpu.push(m.cpu); if (HIST.cpu.length > 80) HIST.cpu.shift(); }
+  if (m.ram != null) { HIST.ram.push(m.ram); if (HIST.ram.length > 80) HIST.ram.shift(); }
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  set("sCpu", m.cpu == null ? "–" : m.cpu + "%");
+  set("sRam", m.ram == null ? "–" : m.ram + "%");
+  set("sDisk", m.disk == null ? "–" : m.disk + "%");
+  set("sDiskF", m.disk_free_gb == null ? "" : m.disk_free_gb + " GB FREE");
+  set("sLoad", m.load == null ? "–" : m.load);
+  set("sCores", m.cores ? m.cores + " CORES · " + (m.ram_gb || "?") + " GB" : "");
+  set("sUp", m.uptime || "–");
+  spark("kCpu", HIST.cpu, "#5ef08a");
+  spark("kRam", HIST.ram, "#7cc4ff");
+  if (!glyphsDrawn) {
+    glyphsDrawn = true;
+    glyph("iCpu", "cpu", "#5ef08a"); glyph("iRam", "ram", "#7cc4ff");
+    glyph("iDisk", "disk", "#ffb020"); glyph("iLoad", "load", "#b57bff");
+    glyph("iUp", "up", "#8f82ab");
+  }
+
+  const list = document.getElementById("blist");
+  list.innerHTML = BOTS.map((b, i) => {
+    const st = STATE[b.state] || STATE.idle;
+    return '<div class="bot" data-i="' + i + '"><span class="n">' + (i + 1) + '</span>' +
+      '<span class="nm">' + b.name + '</span>' +
+      '<span class="st" style="color:' + st.c + '">' + b.state.toUpperCase() + '</span>' +
+      '<i style="background:' + b.color + '"></i></div>';
+  }).join("");
+  // clicking a bot points the room at the person who stands for it
+  [...list.children].forEach(el => el.onclick = () => {
+    const b = BOTS[+el.dataset.i]; if (!b) return;
+    document.getElementById("act").textContent = b.name + " · " + b.fa + " · " + b.state;
+  });
+
+  const ok = UPLINK.ok === true;
+  const el = document.getElementById("sApi");
+  el.textContent = UPLINK.ok == null ? "PROBING…" : ok ? "CONNECTED" : "UNREACHABLE";
+  el.style.color = UPLINK.ok == null ? "#6b5f85" : ok ? "#5ef08a" : "#ff5f6b";
+  set("sApiC", UPLINK.code == null ? "" : String(UPLINK.code));
+  glyph("iApi", "api", UPLINK.ok == null ? "#6b5f85" : ok ? "#5ef08a" : "#ff5f6b");
+}
+[...document.querySelectorAll("#side h3")].forEach(h =>
+  h.onclick = () => h.classList.toggle("shut"));
 
 function icon(g, x, y, kind, col){
   const rows = ICON[kind] || ICON.idle;
@@ -354,6 +539,21 @@ function plate(g, A, px, top){
   g.fillText(st.fa, sx + sw / 2, y + 28);
   icon(g, sx + Math.round(sw) + 5, y + 23, b.state, st.c);
   g.textAlign = "left"; g.textBaseline = "alphabetic";
+}
+
+/* Two z's drifting off the head of whoever is asleep, so a still sprite reads as
+   sleeping and not as a character that froze. */
+function zzz(g, px, top, t){
+  g.textAlign = "left"; g.textBaseline = "alphabetic";
+  // beside the head, not above it: over the head is where the name plate is
+  for (let i = 0; i < 2; i++) {
+    const p = ((t * 0.4 + i * 0.5) % 1);
+    g.globalAlpha = 0.95 * (1 - p * 0.8);
+    g.fillStyle = "#d9c6ff";
+    g.font = "bold " + (12 + i * 5) + "px " + FACE;
+    g.fillText("z", px + 24 + i * 8 + Math.sin((t + i) * 2) * 2, top + 18 - p * 22);
+  }
+  g.globalAlpha = 1;
 }
 
 /* ------------------------------------------------------------------ drawing */
@@ -418,6 +618,7 @@ function frame(now){
   // after everything else: a name plate belongs to the viewer, not to the room,
   // so a desk in front of somebody must not eat half of it
   for (const p of plates) plate(cx, p.A, p.px, p.top);
+  for (const p of plates) if (p.A.state === "sleep") zzz(cx, p.px, p.top, now);
 
   if (!frame.hudAt || now - frame.hudAt > 0.5) {
     frame.hudAt = now;

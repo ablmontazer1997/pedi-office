@@ -68,7 +68,39 @@ button{font:inherit;font-size:12px;cursor:pointer;color:#4a3524;
 button:hover{filter:brightness(1.1)}
 button:disabled{opacity:.45;cursor:not-allowed}
 
-#logs{right:10px;bottom:10px;width:330px;max-height:38vh;overflow:auto;font-size:11px}
+/* the right-hand console: machine, bots, uplink. Same wooden pack art as the
+   rest of the page, laid out like a status board -- label left, value right. */
+#side{top:84px;right:10px;width:252px;max-height:calc(70vh - 104px);overflow:auto;
+  font-size:12px;padding:2px 0}
+#side h3{margin:0;padding:2px 2px 6px;font-size:11px;color:#7a4a1e;letter-spacing:2px;
+  display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+#side h3 .cv{margin-left:auto;font-size:10px;color:#9a7a4a;transition:transform .12s}
+#side h3.shut .cv{transform:rotate(-90deg)}
+#side h3.shut + .body{display:none}
+#side .body{margin-bottom:12px}
+#side section:last-child .body{margin-bottom:2px}
+.mt{padding:5px 7px;margin-bottom:5px;background:#00000012;
+  border:2px solid #00000022;color:#4a3524}
+.mt .hd{display:flex;align-items:center;gap:7px}
+.mt .lb{flex:1;letter-spacing:1px}
+.mt .vl{color:#2f2417}
+.mt .sub{font-size:10px;color:#8a6a4a}
+.mt canvas.spk{display:block;width:100%;height:16px;margin-top:4px;image-rendering:pixelated}
+canvas.ico{width:14px;height:14px;flex:none;image-rendering:pixelated}
+.bt{display:flex;align-items:center;gap:7px;padding:4px 7px;cursor:pointer;
+  border:2px solid transparent;color:#4a3524}
+.bt:hover{border-color:#b07a3c;background:#00000012}
+.bt .n{color:#7a4a1e;min-width:11px}
+.bt .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt .st{font-size:10px;letter-spacing:1px}
+.bt i{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none;
+  box-shadow:0 0 0 1px #00000055}
+.s-running{color:#2f6a2f}.s-idle{color:#6a4a8a}.s-error{color:#9a2f1e}.s-off{color:#8a6a4a}
+#api{display:flex;align-items:center;gap:8px;padding:6px 7px;background:#00000012;
+  border:2px solid #00000022}
+#api .big{flex:1;letter-spacing:1px}
+
+#logs{right:10px;bottom:10px;width:330px;max-height:30vh;overflow:auto;font-size:11px}
 #logs .ln{display:flex;gap:6px;padding:1px 0;border-bottom:1px dashed #00000022}
 #logs .t{color:#8a6a4a}
 #logs .w{color:#7a4a1e;min-width:62px}
@@ -79,7 +111,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:30;
   font-size:12px;display:none;padding:0 4px}
-@media (max-width:900px){#rail,#logs{display:none}}
+@media (max-width:900px){#rail,#logs,#side{display:none}}
 </style>
 
 <canvas id="cv"></canvas>
@@ -90,14 +122,49 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <div class="ui panel" id="top">
   <span><b>RADE</b> OFFICE</span>
   <span>BOTS <span class="v" id="tBots">–</span></span>
-  <span>CPU <span class="v" id="tCpu">–</span></span>
-  <span>RAM <span class="v" id="tRam">–</span></span>
   <span id="tClock" class="v"></span>
   <span id="bSound" class="v" style="cursor:pointer" title="صدای اتاق موسیقی">♪ OFF</span>
   <span id="badge"></span>
 </div>
 
 <div class="ui frame" id="rail"><h3>LOCATIONS</h3><div id="rlist"></div></div>
+
+<div class="ui frame" id="side">
+  <section>
+    <h3>SYSTEM STATUS<span class="cv">▾</span></h3>
+    <div class="body">
+      <div class="mt">
+        <div class="hd"><canvas class="ico" id="iCpu" width="7" height="7"></canvas>
+          <span class="lb">CPU</span><span class="vl" id="sCpu">–</span></div>
+        <canvas class="spk" id="kCpu" width="120" height="16"></canvas>
+      </div>
+      <div class="mt">
+        <div class="hd"><canvas class="ico" id="iRam" width="7" height="7"></canvas>
+          <span class="lb">RAM</span><span class="vl" id="sRam">–</span></div>
+        <canvas class="spk" id="kRam" width="120" height="16"></canvas>
+      </div>
+      <div class="mt"><div class="hd"><canvas class="ico" id="iDisk" width="7" height="7"></canvas>
+        <span class="lb">DISK</span><span class="vl" id="sDisk">–</span></div>
+        <div class="sub" id="sDiskF"></div></div>
+      <div class="mt"><div class="hd"><canvas class="ico" id="iLoad" width="7" height="7"></canvas>
+        <span class="lb">LOAD</span><span class="vl" id="sLoad">–</span></div>
+        <div class="sub" id="sCores"></div></div>
+      <div class="mt"><div class="hd"><canvas class="ico" id="iUp" width="7" height="7"></canvas>
+        <span class="lb">UPTIME</span><span class="vl" id="sUp">–</span></div></div>
+    </div>
+  </section>
+  <section>
+    <h3>BOTS STATUS<span class="cv">▾</span></h3>
+    <div class="body" id="blist"></div>
+  </section>
+  <section>
+    <h3>API CONNECTION<span class="cv">▾</span></h3>
+    <div class="body"><div id="api">
+      <canvas class="ico" id="iApi" width="7" height="7"></canvas>
+      <span class="big" id="sApi">…</span><span class="sub" id="sApiC"></span>
+    </div></div>
+  </section>
+</div>
 <div class="ui frame" id="mini"><canvas id="mmc"></canvas></div>
 <div class="ui frame" id="logs"><div id="llist"></div></div>
 
@@ -191,11 +258,15 @@ LAYOUT.forEach(row => {
   });
   planY += rh + GAP;
 });
-// the game room does not belong to any row, so it gets its own column on the right
-const TALL = RM[WORLD.tall];
-TALL.x = PAD + planW + GAP;
-TALL.y = planY - GAP - q16(TALL.h);
-const WORLD_W = TALL.x + TALL.w + PAD, WORLD_H = planY - GAP + PAD;
+// one room may sit outside the rows and take its own column on the right. The
+// editor is allowed to leave that empty, and then the plan is just the rows.
+const TALL = WORLD.tall ? RM[WORLD.tall] : null;
+if (TALL){
+  TALL.x = PAD + planW + GAP;
+  TALL.y = planY - GAP - q16(TALL.h);
+}
+const WORLD_W = (TALL ? TALL.x + TALL.w : PAD + planW) + PAD;
+const WORLD_H = planY - GAP + PAD;
 // six bots plus the chief, who is his own man and belongs to no session
 const CH_FILES = WORLD.chars;
 
@@ -457,13 +528,22 @@ document.getElementById("bSound").onclick = soundToggle;
 const LIFE = [];
 function rnd(a,b){ return a + Math.random()*(b-a); }
 
+// How long a bot stays where it is, in seconds. Standing still is the normal
+// state of an office: a floor where everyone changes seat every twenty seconds
+// reads as broken, not busy. Nothing moves unless the bot's actual state
+// changed, or its stay ran out and the coin came up "go somewhere".
+const DWELL = { work:[600,1200], sleep:[420,900], play:[180,420], wander:[90,210] };
+
 // a target is only taken if the grid can actually get there; otherwise the bot
 // keeps what it was doing and tries something else next tick, because the one
 // thing it must never do is walk the straight line through a wall
-function setTarget(i, T){
+function setTarget(i, T, max){
   const L = LIFE[i];
   const p = route(L.x, L.y, T.x, T.y, 2);
   if (!p) return false;
+  // a walk across the whole floor is three quarters of a minute of nothing but
+  // walking, so a caller may refuse anything further than it cares to travel
+  if (max && p.length > max) return false;
   // Standing next to the treadmill is not using it. A spot marked `on` is walked
   // onto exactly -- the chair, the bench, the belt -- and every other spot ends
   // on the last cell of the path, never on a straight line across the furniture.
@@ -474,18 +554,38 @@ function setTarget(i, T){
   L.target = T; L.path = p; L.pi = 0; L.done = false;
   return true;
 }
-function goDesk(i, working){
+// mode "work" = at the monitor. mode "sleep" = asleep in its own chair, which is
+// where a bot with no session at all belongs, not touring the floor.
+function goDesk(i, mode){
   const s = STATIONS[i];
-  return setTarget(i, {x:OFFICE.x+s[0], y:OFFICE.y+s[1], act:"idle", d:1, desk:true, on:true,
-                       l: working ? "پشت مانیتور، در حال کار" : "سر جای خودش"});
+  const T = {x:OFFICE.x+s[0], y:OFFICE.y+s[1], desk:true, mode, on:true, d:1};
+  if (mode === "work"){ T.act = "idle";  T.l = "پشت مانیتور، در حال کار"; T.dw = DWELL.work; }
+  else                { T.act = "sleep"; T.l = "روی صندلی خوابش برده";    T.dw = DWELL.sleep; }
+  return setTarget(i, T);
+}
+const NEAR = 70;   // grid cells, about twenty seconds of walking
+function spotIn(i, r, max){
+  const s = r.spots[(Math.random()*r.spots.length)|0];
+  return setTarget(i, {x:r.x+s.x, y:r.y+s.y, act:s.a, d:s.d, l:s.l, on:s.on, prop:s.p,
+                       snd:s.snd, dw:DWELL.play}, max);
 }
 function goPlay(i){
+  const L = LIFE[i], here = roomAt(L.x, L.y);
+  // Most of the time the next thing to do is in the room it is already in.
+  // Crossing the whole floor is a minute of walking, and a bot that does that
+  // every few minutes is a bot that is never anywhere.
+  if (here && here.id !== "office" && here.spots.length && Math.random() < 0.7
+      && spotIn(i, here)) return true;
   const pool = ROOMS.filter(r => r.id !== "office" && r.spots.length);
+  // six tries at somewhere close by, then two that will take whatever is left
   for (let k=0;k<8;k++){
-    const r = pool[(Math.random()*pool.length)|0];
-    const s = r.spots[(Math.random()*r.spots.length)|0];
-    if (setTarget(i, {x:r.x+s.x, y:r.y+s.y, act:s.a, d:s.d, l:s.l, on:s.on, prop:s.p,
-                      snd:s.snd})) return true;
+    let best = null, bd = 1e9;
+    for (let j=0;j<3;j++){
+      const r = pool[(Math.random()*pool.length)|0];
+      const d = Math.hypot(r.x+r.w/2-L.x, r.y+r.h/2-L.y);
+      if (d < bd){ bd = d; best = r; }
+    }
+    if (best && spotIn(i, best, k < 6 ? NEAR : 0)) return true;
   }
   return false;
 }
@@ -494,23 +594,44 @@ function goWander(i){
   for (let k=0;k<24;k++){
     const x = r ? rnd(r.x+24, r.x+r.w-24) : rnd(PAD, WORLD_W-PAD);
     const y = r ? rnd(r.y+40, r.y+r.h-24) : rnd(PAD, WORLD_H-PAD);
-    if (walkAt(x,y) && setTarget(i, {x, y, act:"idle", d:3, l:"قدم زدن"})) return true;
+    if (walkAt(x,y) && setTarget(i, {x, y, act:"idle", d:3, l:"قدم زدن", dw:DWELL.wander}))
+      return true;
   }
   return goPlay(i);
 }
 
+// `parked` means the bot is at its desk because of its state, not because it
+// chose to be. That is the difference between a nap and being sent to the chair,
+// and it is what lets a bot leave the moment its state changes without leaving
+// mid-nap every time it wakes up.
+function park(i, mode){
+  const L = LIFE[i];
+  if (L.parked && L.target.mode === mode) return;
+  const now = performance.now()/1000;
+  if (now < L.retry) return;       // a blocked route is not worth an A* per frame
+  L.retry = now + 1;
+  if (goDesk(i, mode)) L.parked = true;
+}
 function think(i, bot, now){
   const L = LIFE[i];
-  const working = bot && (bot.state === "running" || bot.state === "error");
-  if (working){
-    if (!L.target || !L.target.desk) goDesk(i, true);
-    return;
-  }
-  if (L.target && L.target.desk && L.done){ L.until = 0; L.target = null; }
+  const st = bot ? bot.state : "off";
+  // A turn is running: the bot is at its monitor and nothing else gets a vote.
+  if (st === "running" || st === "error"){ park(i, "work"); return; }
+  // No session at all: asleep in its own chair until something wakes it.
+  if (st === "off"){ park(i, "sleep"); return; }
+
   if (L.target && !L.done) return;          // let it finish walking there first
+  // Idle now: it just came off duty, so it leaves the desk without waiting the
+  // rest of its shift out.
+  if (L.parked){ L.parked = false; L.target = null; if (goPlay(i) || goWander(i)) return; }
   if (now < L.until) return;
-  // off duty means off the chair: the desk is not one of the choices
-  if (Math.random() < 0.72) goPlay(i); else goWander(i);
+  // Most of the time the stay is simply extended. Actually going somewhere is
+  // the exception, which is what keeps the floor calm.
+  if (Math.random() < 0.7){ L.until = now + rnd(120, 300); return; }
+  const r = Math.random();
+  if (r < 0.15 && goDesk(i, "sleep")) return;   // a nap in its own chair
+  if (r < 0.85 && goPlay(i)) return;
+  goWander(i);
 }
 
 function step(i, dt){
@@ -524,7 +645,10 @@ function step(i, dt){
   if (dist < (last ? 1.2 : 3)){
     if (!last){ L.pi++; return; }
     L.act = T.act; L.dir = T.d; L.label = T.l;
-    if (!L.done){ L.done = true; L.until = performance.now()/1000 + rnd(14, 34); }
+    if (!L.done){
+      const dw = T.dw || DWELL.play;
+      L.done = true; L.until = performance.now()/1000 + rnd(dw[0], dw[1]);
+    }
     return;
   }
   const k = Math.min(1, 46*dt/dist);
@@ -552,9 +676,7 @@ function paintChrome(){
   const bs = DATA.bots || [];
   document.getElementById("tBots").textContent =
     bs.filter(b => b.state === "running").length + "/" + bs.length + " ACTIVE";
-  const m = DATA.machine || {};
-  document.getElementById("tCpu").textContent = (m.cpu == null ? "–" : m.cpu+"%");
-  document.getElementById("tRam").textContent = (m.ram == null ? "–" : m.ram+"%");
+  paintSide();
   document.getElementById("badge").textContent = VIEW ? "VIEW ONLY" : "";
   document.getElementById("logs").style.display = VIEW ? "none" : "";
   document.getElementById("sessWrap").style.display = VIEW ? "none" : "";
@@ -577,6 +699,78 @@ function paintChrome(){
         esc(l.who)+'</span><span class="lv-'+l.level+'">'+esc(l.msg)+'</span></div>').join("");
   if (cardBot != null) fillCard(cardBot);
 }
+/* ------------------------------------------------------- the status board */
+// 7x7 pixel glyphs, drawn once and scaled by the browser. Cheaper than shipping
+// six more png files for six icons.
+const ICONS = {
+  cpu :[".x.x.x.","xxxxxxx","x.....x","x.xxx.x","x.....x","xxxxxxx",".x.x.x."],
+  ram :["xxxxxxx","x.x.x.x","x.x.x.x","x.x.x.x","xxxxxxx",".x...x.","......."],
+  disk:["xxxx...","x...xxx","x.....x","x.xxx.x","x.....x","xxxxxxx","......."],
+  load:["..xxx..",".x...x.","x..x..x","x..x..x","x.....x",".x...x.","..xxx.."],
+  up  :["..xxx..",".x...x.","x..x..x","x..xxxx","x.....x",".x...x.","..xxx.."],
+  api :["..xxx..",".x.x.x.","x..x..x","xxxxxxx","x..x..x",".x.x.x.","..xxx.."],
+};
+function icon(id, key, col){
+  const c = document.getElementById(id); if (!c) return;
+  const x = c.getContext("2d");
+  x.clearRect(0,0,7,7); x.fillStyle = col;
+  ICONS[key].forEach((row,r) => [...row].forEach((ch,b) => { if (ch === "x") x.fillRect(b,r,1,1); }));
+}
+const HIST = {cpu:[], ram:[]};
+function spark(id, arr, col){
+  const c = document.getElementById(id); if (!c) return;
+  const x = c.getContext("2d"), w = c.width, h = c.height;
+  x.clearRect(0,0,w,h);
+  x.fillStyle = "#00000018"; x.fillRect(0,0,w,h);
+  const n = Math.floor(w/3);
+  arr.slice(-n).forEach((v,i) => {
+    const bh = Math.max(1, Math.round(v/100*(h-2)));
+    x.fillStyle = col; x.fillRect(i*3, h-bh, 2, bh);
+  });
+}
+const ST_FA = {running:"RUNNING", idle:"IDLE", off:"OFF", error:"ERROR"};
+let sideDrawn = false;
+function paintSide(){
+  const m = DATA.machine || {}, bs = DATA.bots || [];
+  if (m.cpu != null){ HIST.cpu.push(m.cpu); if (HIST.cpu.length > 60) HIST.cpu.shift(); }
+  if (m.ram != null){ HIST.ram.push(m.ram); if (HIST.ram.length > 60) HIST.ram.shift(); }
+  const set = (id,v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  set("sCpu",  m.cpu == null ? "–" : m.cpu + "%");
+  set("sRam",  m.ram == null ? "–" : m.ram + "%");
+  set("sDisk", m.disk == null ? "–" : m.disk + "%");
+  set("sDiskF", m.disk_free_gb == null ? "" : m.disk_free_gb + " GB free");
+  set("sLoad", m.load == null ? "–" : m.load);
+  set("sCores", m.cores ? m.cores + " cores · " + (m.ram_gb || "?") + " GB" : "");
+  set("sUp",   m.uptime || "–");
+  spark("kCpu", HIST.cpu, "#2f6a2f");
+  spark("kRam", HIST.ram, "#2a5a8a");
+  if (!sideDrawn){
+    sideDrawn = true;
+    icon("iCpu","cpu","#2f6a2f"); icon("iRam","ram","#2a5a8a");
+    icon("iDisk","disk","#8a5a10"); icon("iLoad","load","#7a4a1e");
+    icon("iUp","up","#4a3524");
+  }
+
+  document.getElementById("blist").innerHTML = bs.map((b,i) =>
+    '<div class="bt" data-b="'+i+'"><span class="n">'+(i+1)+'</span>'+
+    '<span class="nm">'+esc(b.name)+'</span>'+
+    '<span class="st s-'+b.state+'">'+(ST_FA[b.state]||b.state).toUpperCase()+'</span>'+
+    '<i style="background:'+b.color+'"></i></div>').join("");
+  [...document.getElementById("blist").children].forEach(el =>
+    el.onclick = () => openCard(+el.dataset.b));
+
+  const a = DATA.api || {};
+  const ok = a.ok === true;
+  const el = document.getElementById("sApi");
+  el.textContent = a.ok == null ? "PROBING…" : ok ? "CONNECTED" : "UNREACHABLE";
+  el.className = "big " + (a.ok == null ? "s-off" : ok ? "s-running" : "s-error");
+  set("sApiC", a.code == null ? "" : String(a.code));
+  icon("iApi","api", a.ok == null ? "#8a6a4a" : ok ? "#2f6a2f" : "#9a2f1e");
+}
+// each heading folds its own section away
+[...document.querySelectorAll("#side h3")].forEach(h =>
+  h.onclick = () => h.classList.toggle("shut"));
+
 function dots(rid){
   let s = "";
   LIFE.forEach((L,i) => { const r = roomAt(L.x,L.y);
@@ -615,7 +809,8 @@ function boot(){
   for (let i=0;i<6;i++){
     const s = STATIONS[i];
     LIFE.push({ x:OFFICE.x+s[0], y:OFFICE.y+s[1], act:"idle", dir:1, path:[], pi:0,
-                until:0, seed:i*1.7, label:"پشت مانیتور", target:null });
+                until:0, retry:0, parked:false, seed:i*1.7, label:"پشت مانیتور",
+                target:null });
   }
   resize(); poll(); setInterval(poll, 3000);
 }
@@ -695,7 +890,7 @@ function frame(){
 
   LIFE.forEach((L,i) => { if (!roomAt(L.x,L.y)) paintBot(i, bots[i], now); });
 
-  if (SOUND && AX){
+  if (SOUND && AX && RM.music){
     const mr = RM.music;
     const heard = !(mr.x > v.x1 || mr.x+mr.w < v.x0 || mr.y > v.y1 || mr.y+mr.h < v.y0);
     if (heard) LIFE.forEach((L,i) => {
