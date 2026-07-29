@@ -61,7 +61,7 @@
   "asset": "image_29",
   "x": 403,
   "y": 754,
-  "z": 7
+  "z": 1
  },
  {
   "asset": "image_28",
@@ -157,5 +157,26 @@
   "asset": "chair",
   "x": 121,
   "y": 575
+ },
+ {
+  "asset": "sign_works",
+  "x": 218,
+  "y": 335
+ },
+ {
+  "asset": "sign_friday",
+  "x": 302,
+  "y": 302
+ },
+ {
+  "asset": "sign_bugs",
+  "x": 386,
+  "y": 268
+ },
+ {
+  "asset": "wall_lamp",
+  "x": 302,
+  "y": 326,
+  "z": 1
  }
 ]
