@@ -4,7 +4,7 @@
 <style>
   html,body{height:100%;margin:0;background:#07060c;color:#8f82ab;
     font:12px ui-monospace,Menlo,Consolas,monospace;overflow:hidden}
-  #wrap{position:absolute;inset:0;right:322px;display:grid;place-items:center}
+  #wrap{position:absolute;inset:0;right:322px;bottom:182px;display:grid;place-items:center}
   canvas{image-rendering:pixelated;display:block}
   #hud{position:absolute;left:10px;top:10px;background:rgba(12,9,20,.8);
     border:1px solid #2f2646;border-radius:5px;padding:6px 9px;letter-spacing:1px}
@@ -56,10 +56,34 @@
   #srv .badge{width:26px;height:26px;image-rendering:pixelated;
     position:absolute;left:13px;bottom:11px}
   #srvBox{position:relative}
-  @media (max-width:1150px){#side{display:none}#wrap{right:0}}
+
+  /* the log strip along the bottom, the width of the room */
+  #logs{position:absolute;left:12px;right:322px;bottom:12px;height:158px;
+    background:#0c0a14;border:2px solid #7b3fd4;border-radius:10px;
+    display:flex;flex-direction:column;font-family:"BoldPixels",ui-monospace,monospace}
+  #logs .top{display:flex;align-items:center;padding:9px 12px;
+    border-bottom:1px solid #35235c}
+  #logs .top b{flex:1;font-weight:400;font-size:15px;letter-spacing:2px;color:#c07bff}
+  #logs .top button{font:inherit;font-size:12px;letter-spacing:2px;color:#e6dff5;
+    background:#1a1230;border:2px solid #7b3fd4;border-radius:6px;padding:3px 12px;
+    cursor:pointer}
+  #logs .top button:hover{background:#26183f}
+  #llist{flex:1;overflow:auto;padding:7px 12px 9px;font-size:13px;line-height:1.65}
+  #llist .ln{display:flex;align-items:center;gap:8px;white-space:nowrap}
+  #llist .t{color:#6b5f85}
+  #llist img{width:13px;height:13px;image-rendering:pixelated;flex:none}
+  #llist .who{letter-spacing:1px}
+  #llist .msg{overflow:hidden;text-overflow:ellipsis}
+  #llist .none{color:#4e4568;letter-spacing:1px}
+  @media (max-width:1150px){#side{display:none}#wrap{right:0}#logs{right:12px}}
 </style></head><body>
 <div id="wrap"><canvas id="cv"></canvas></div>
 <div id="hud"><b id="act">…</b></div>
+
+<div id="logs">
+  <div class="top"><b>LIVE LOGS</b><button id="logClear">CLEAR</button></div>
+  <div id="llist"></div>
+</div>
 
 <div id="side">
   <div class="box">
@@ -126,6 +150,10 @@ async function boot(){
   CAST = Object.keys(S.chars);
   STAND = S.stand || STAND;
   const jobs = [load("bg", "office/room_bg.png")];
+  // the plates wear the same gems as the summary, so the canvas needs them too,
+  // and the same pixel face, which canvas will not use until it is really loaded
+  for (const k in GEM) jobs.push(load("gem:" + k, GEM[k]));
+  jobs.push(document.fonts.load('12px "BoldPixels"').catch(() => {}));
   const seen = new Set();
   for (const p of S.props) if (!seen.has(p.a)) { seen.add(p.a); jobs.push(load("a:" + p.a, "office/assets/" + p.a + ".png")); }
   for (const tag of CAST)
@@ -382,33 +410,29 @@ function step(A, dt, now){
    when the dashboard says it is off. */
 let BOTS = [], WHOSE = {};
 
+// the plate says the same words the summary says, in the same colours, with the
+// same gem: one vocabulary for the whole page
 const STATE = {
-  running: {fa: "در حال کار", c: "#5ef08a"},
-  idle:    {fa: "آماده",      c: "#7cc4ff"},
-  off:     {fa: "خاموش",      c: "#6b5f85"},
-  error:   {fa: "خطا",        c: "#ff5f6b"},
+  running:  {en: "Running",  c: "#5ef08a"},
+  idle:     {en: "Idle",     c: "#ffb020"},
+  off:      {en: "Offline",  c: "#8f82ab"},
+  error:    {en: "Error",    c: "#ff5f6b"},
+  updating: {en: "Updating", c: "#7cc4ff"},
 };
 
-/* 9x9 pixel glyphs, one row of the icon per string, so they stay pixel art at
-   any zoom instead of a smoothly drawn vector dot */
-const ICON = {
-  running: ["  X      ", "  XX     ", "  XXX    ", "  XXXX   ", "  XXXXX  ",
-            "  XXXX   ", "  XXX    ", "  XX     ", "  X      "],
-  idle:    ["         ", "   XXX   ", "  X   X  ", " X     X ", " X     X ",
-            " X     X ", "  X   X  ", "   XXX   ", "         "],
-  off:     ["    X    ", "  X X X  ", " X  X  X ", " X     X ", " X     X ",
-            "  X   X  ", "   XXX   ", "         ", "         "],
-  error:   ["    X    ", "    X    ", "    X    ", "    X    ", "    X    ",
-            "    X    ", "         ", "    X    ", "         "],
-};
-
-let MACHINE = {}, UPLINK = {};
+let MACHINE = {}, UPLINK = {}, LOGS = [];
+// the logs are the one part of the status the server keeps behind the token, so
+// the page passes on whatever key it was opened with
+const KEY = new URLSearchParams(location.search).get("k") || "";
 
 async function bots(){
   try {
-    const d = await (await fetch("api/status", {cache: "no-store"})).json();
+    const d = await (await fetch("api/status" + (KEY ? "?k=" + encodeURIComponent(KEY) : ""),
+                                 {cache: "no-store"})).json();
     BOTS = d.bots || [];
     MACHINE = d.machine || {}; UPLINK = d.api || {};
+    LOGS = d.logs || [];
+    logStrip();
     // one bot per character, in a fixed order, so nobody swaps identity between
     // polls; any character left over is simply somebody who works here
     WHOSE = {};
@@ -419,6 +443,37 @@ async function bots(){
     board();
   } catch (e) { /* the room keeps running without the dashboard */ }
 }
+
+/* ---------------------------------------------------------------- the logs */
+// what a log level looks like: the same five gems the summary uses
+const LEVEL = {ok:   {gem: "running",  c: "#5ef08a"},
+               err:  {gem: "error",    c: "#ff5f6b"},
+               warn: {gem: "idle",     c: "#ffb020"},
+               info: {gem: "updating", c: "#7cc4ff"}};
+let logFloor = 0;                      // CLEAR hides everything up to here
+
+function logStrip(){
+  const el = document.getElementById("llist"); if (!el) return;
+  const rows = LOGS.filter(l => l.n > logFloor).slice(-60).reverse();
+  if (!rows.length){
+    el.innerHTML = '<div class="none">' +
+      (KEY ? "— nothing yet —" : "— open with the token to read the logs —") + "</div>";
+    return;
+  }
+  el.innerHTML = rows.map(l => {
+    const lv = LEVEL[l.level] || LEVEL.info;
+    return '<div class="ln"><span class="t">[' + esc(l.t) + ']</span>' +
+      '<img src="' + GEM[lv.gem] + '" alt="">' +
+      '<span class="who" style="color:' + lv.c + '">' + esc(l.who).toUpperCase() + ':</span>' +
+      '<span class="msg" style="color:' + lv.c + '">' + esc(l.msg) + '</span></div>';
+  }).join("");
+}
+function esc(s){ return String(s == null ? "" : s)
+  .replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c])); }
+document.getElementById("logClear").onclick = () => {
+  logFloor = LOGS.length ? LOGS[LOGS.length - 1].n : logFloor;
+  logStrip();
+};
 
 /* ------------------------------------------------------------- the console */
 const SEGS = 16;                       // segments in a meter, as the design has it
@@ -497,28 +552,23 @@ function board(){
 [...document.querySelectorAll("#side h3")].forEach(h =>
   h.onclick = () => h.classList.toggle("shut"));
 
-function icon(g, x, y, kind, col){
-  const rows = ICON[kind] || ICON.idle;
-  g.fillStyle = col;
-  for (let r = 0; r < rows.length; r++)
-    for (let c = 0; c < rows[r].length; c++)
-      if (rows[r][c] === "X") g.fillRect(x + c, y + r, 1, 1);
-}
-
-/* Not ui-monospace: no monospace face on this machine draws Persian, so the
-   browser silently fell back to a cursive one and the descenders of گرز علی
-   were cut off by the border. */
-const FACE = 'Tahoma,"Noto Sans Arabic","Segoe UI",Arial,sans-serif';
+/* The plates read in English now, so they can wear the same pixel face the
+   panel does. FACE stays for the zZ, which is drawn as a letter. */
+const FACE = '"BoldPixels",Tahoma,"Segoe UI",Arial,sans-serif';
 
 function plate(g, A, px, top){
   const b = WHOSE[A.tag];
   if (!b) return;
-  const st = STATE[b.state] || STATE.idle;
-  g.font = "bold 12px " + FACE;
-  const nw = g.measureText(b.fa).width;
+  const key = b.updating ? "updating" : (STATE[b.state] ? b.state : "idle");
+  const st = STATE[key];
+  const gem = IMG["gem:" + key];
+  const ICO = 14, GAP = 6, PAD = 9;
+
+  g.font = "12px " + FACE;
+  const nw = g.measureText(b.name).width;
   g.font = "11px " + FACE;
-  const sw = g.measureText(st.fa).width;
-  const w = Math.round(Math.max(nw, sw + 15) + 20), h = 40, tail = 6;
+  const sw = g.measureText(st.en).width;
+  const w = Math.round(PAD * 2 + ICO + GAP + Math.max(nw, sw)), h = 40, tail = 6;
   const x = Math.round(px - w / 2), y = Math.round(top - h - tail - 5);
 
   g.fillStyle = "#07050d";
@@ -536,16 +586,16 @@ function plate(g, A, px, top){
   }
   g.fillRect(px - 1, y + h + tail, 3, 1);        // close the tip
 
-  g.textAlign = "center"; g.textBaseline = "middle";
-  g.font = "bold 12px " + FACE; g.fillStyle = "#ece5f7";
-  g.fillText(b.fa, px, y + 13);
-  // the icon sits on the right of the state, which is where a Persian line
-  // starts, so it reads as the bullet of that line and not as a stray mark
-  const sx = Math.round(px - (sw + 15) / 2);
+  // gem, then the name, then the state underneath it: the state belongs to the
+  // name, so it is indented to it rather than centred in the box
+  const tx = x + PAD + ICO + GAP;
+  if (gem) g.drawImage(gem, x + PAD, y + 13 - ICO / 2, ICO, ICO);
+  g.textAlign = "left"; g.textBaseline = "middle";
+  g.font = "12px " + FACE; g.fillStyle = "#ece5f7";
+  g.fillText(b.name, tx, y + 13);
   g.font = "11px " + FACE; g.fillStyle = st.c;
-  g.fillText(st.fa, sx + sw / 2, y + 28);
-  icon(g, sx + Math.round(sw) + 5, y + 23, b.state, st.c);
-  g.textAlign = "left"; g.textBaseline = "alphabetic";
+  g.fillText(st.en, tx, y + 28);
+  g.textBaseline = "alphabetic";
 }
 
 /* Two z's drifting off the head of whoever is asleep, so a still sprite reads as
