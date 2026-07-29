@@ -182,18 +182,134 @@ def api_probe():
         time.sleep(45)
 
 
+# --------------------------------------------------------------- token usage
+# What a bot has actually spent today, read off the transcript Claude Code
+# writes as it works. The pane can only ever show the turn in progress, so it is
+# the transcript or nothing — and nothing is not an option here, a made up
+# number on this dashboard would be worse than an empty field.
+HOMEDIR = os.path.expanduser("~")
+PROJDIR = os.path.join(HOMEDIR, "projects")
+USAGE = [("in", "input_tokens"), ("out", "output_tokens"),
+         ("read", "cache_read_input_tokens"), ("write", "cache_creation_input_tokens")]
+_tok = {}                      # bot -> today's counters
+_toff = {}                     # transcript -> bytes already counted
+
+
+def transcripts(bot_id):
+    """The folder Claude Code logs this bot's session into.
+
+    Three of these bots run against their own CLAUDE_CONFIG_DIR, so the path
+    cannot be assumed: it is read from the same bring-up script systemd runs,
+    which is the only place that knows.
+    """
+    cfg = os.path.join(HOMEDIR, ".claude")
+    cwd = os.path.join(PROJDIR, bot_id)
+    try:
+        txt = open(os.path.join(PROJDIR, bot_id, "bring-up.sh")).read()
+    except OSError:
+        txt = ""
+    m = re.search(r'CLAUDE_CONFIG_DIR="?([^"\n]+)"?', txt)
+    if m:
+        cfg = m.group(1)
+    m = re.search(r'^cd "?([^"\n]+)"?', txt, re.M)
+    if m:
+        cwd = m.group(1)
+    for a, b in (("${HOME}", HOMEDIR), ("$HOME", HOMEDIR), ("~", HOMEDIR)):
+        cfg, cwd = cfg.replace(a, b), cwd.replace(a, b)
+    return os.path.join(cfg, "projects", cwd.replace("/", "-"))
+
+
+def _local_day(ts):
+    try:
+        import calendar
+        return time.strftime("%Y-%m-%d",
+                             time.localtime(calendar.timegm(time.strptime(ts[:19],
+                                                            "%Y-%m-%dT%H:%M:%S"))))
+    except (ValueError, TypeError):
+        return None
+
+
+def count_tokens(bot_id):
+    """Add up today's usage, reading only what has been written since last time.
+
+    A live transcript is hundreds of megabytes, so it is never re-read: every
+    file remembers how far it was counted and each pass picks up from there,
+    stopping at the last complete line so a half-written record is not lost.
+    """
+    day = time.strftime("%Y-%m-%d")
+    acc = _tok.get(bot_id)
+    if not acc or acc["day"] != day:
+        # only the day's tally starts again; the offsets do not, or every line
+        # already counted would be counted a second time
+        acc = _tok[bot_id] = {"day": day, "in": 0, "out": 0, "read": 0,
+                              "write": 0, "turns": 0}
+    d = transcripts(bot_id)
+    if not os.path.isdir(d):
+        return acc
+    now = time.time()
+    for name in sorted(os.listdir(d)):
+        if not name.endswith(".jsonl"):
+            continue
+        p = os.path.join(d, name)
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        if now - st.st_mtime > 26 * 3600:      # yesterday's sessions are done
+            continue
+        off = _toff.get(p, 0)
+        if st.st_size < off:                   # truncated or replaced
+            off = 0
+        if st.st_size <= off:
+            continue
+        with open(p, "rb") as fh:
+            fh.seek(off)
+            buf = fh.read(st.st_size - off)
+        cut = buf.rfind(b"\n")
+        if cut < 0:
+            continue
+        _toff[p] = off + cut + 1
+        for raw in buf[:cut].split(b"\n"):
+            if b'"usage"' not in raw:          # most lines are tool output
+                continue
+            try:
+                rec = json.loads(raw)
+            except ValueError:
+                continue
+            u = (rec.get("message") or {}).get("usage")
+            if not u or _local_day(rec.get("timestamp")) != day:
+                continue
+            for k, field in USAGE:
+                acc[k] += u.get(field) or 0
+            if u.get("output_tokens"):
+                acc["turns"] += 1
+    return acc
+
+
+def token_loop():
+    while True:
+        for sock, _, _, _ in BOTS:
+            try:
+                count_tokens(sock)
+            except Exception:
+                pass
+        time.sleep(60)
+
+
 # ---------------------------------------------------------------------- bots
 def probe(sock):
     alive = subprocess.run(["tmux", "-L", sock, "has-session", "-t", sock],
                            capture_output=True, timeout=5).returncode == 0
     if not alive:
-        return {"state": "off", "ctx": None, "model": None, "line": "", "pane": []}
+        return {"state": "off", "ctx": None, "ctxk": None, "ctxmax": None,
+                "model": None, "line": "", "pane": []}
 
     pane = sh(["tmux", "-L", sock, "capture-pane", "-p", "-t", sock])
-    ctx = None
+    ctx = ctxk = ctxmax = None
     m = CTX_K.search(pane)
     if m:
-        ctx = round(int(m.group(1)) / max(int(m.group(2)), 1) * 100)
+        ctxk, ctxmax = int(m.group(1)), int(m.group(2))
+        ctx = round(ctxk / max(ctxmax, 1) * 100)
     else:
         m = CTX_PCT.search(pane)
         if m:
@@ -217,8 +333,8 @@ def probe(sock):
     # the tail of the session itself, so the monitors on the dashboard can show
     # what the bot is actually doing rather than a decorative glow
     tail = [l.rstrip() for l in pane.splitlines() if l.strip()][-22:]
-    return {"state": state, "ctx": ctx, "model": (mm.group(0) if mm else None),
-            "line": line, "pane": tail}
+    return {"state": state, "ctx": ctx, "ctxk": ctxk, "ctxmax": ctxmax,
+            "model": (mm.group(0) if mm else None), "line": line, "pane": tail}
 
 
 def status():
@@ -233,7 +349,8 @@ def status():
         elif sock in _restart_at and info["state"] == "running":
             _restart_at.pop(sock, None)      # it answered: it is just working now
         info.update({"id": sock, "name": label, "fa": fa, "color": colour,
-                     "n": i + 1, "managed": sock in SYSTEMD})
+                     "n": i + 1, "managed": sock in SYSTEMD,
+                     "tokens": dict(_tok.get(sock) or {})})
         out.append(info)
 
         if _last_state.get(sock) != info["state"]:
@@ -309,6 +426,7 @@ def public_status():
         b.pop("pane", None)
         b.pop("line", None)
         b.pop("model", None)
+        b.pop("tokens", None)
     return d
 
 
@@ -709,5 +827,6 @@ if __name__ == "__main__":
     cpu_percent()                       # prime the /proc/stat delta
     log("system", "dashboard started", "ok")
     threading.Thread(target=api_probe, daemon=True).start()
+    threading.Thread(target=token_loop, daemon=True).start()
     ThreadingHTTPServer.allow_reuse_address = True
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

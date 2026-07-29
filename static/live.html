@@ -76,10 +76,78 @@
   #llist .who{letter-spacing:1px}
   #llist .msg{overflow:hidden;text-overflow:ellipsis}
   #llist .none{color:#4e4568;letter-spacing:1px}
+  /* the card that opens when you click somebody in the room */
+  #card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(620px,calc(100vw - 40px));max-height:calc(100vh - 40px);z-index:6;
+    background:#0c0a14;border:2px solid #7b3fd4;border-radius:10px;display:none;
+    flex-direction:column;font-family:"BoldPixels",ui-monospace,monospace;
+    box-shadow:0 18px 60px #000c}
+  #card.on{display:flex}
+  #card .hd{display:flex;align-items:center;gap:10px;padding:11px 13px;
+    border-bottom:1px solid #35235c}
+  #card .hd img{width:18px;height:18px;image-rendering:pixelated}
+  #card .hd b{font-weight:400;font-size:16px;letter-spacing:2px;color:#f0eafc}
+  #card .hd .st{font-size:12px;letter-spacing:1.5px}
+  #card .hd .x{margin-left:auto;cursor:pointer;color:#7d6ea0;font-size:15px;
+    padding:0 4px;letter-spacing:0}
+  #card .hd .x:hover{color:#f0eafc}
+  #card .bd{padding:11px 13px;overflow:auto}
+  #card .kv{display:flex;gap:10px;font-size:13px;letter-spacing:1px;padding:5px 0;
+    border-bottom:1px solid #1c1533}
+  #card .kv .k{width:126px;color:#8f82ab;flex:none}
+  #card .kv .v{color:#e6dff5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #card .grid{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}
+  #card .cap{font-size:12px;letter-spacing:2px;color:#c07bff;margin:12px 0 6px}
+  /* the session itself, in the page's own colours rather than a terminal green */
+  #term{background:#07050d;border:2px solid #35235c;border-radius:7px;padding:9px 11px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.5;
+    color:#b9aede;white-space:pre;overflow:auto;max-height:230px;letter-spacing:0}
+  #term .cur{color:#5ef08a}
+  #term .dim{color:#5c5280}
+
+  /* nothing is drawn until every sprite is in, so the wait gets a bar */
+  #boot{position:absolute;inset:0;z-index:9;background:#07060c;display:grid;
+    place-items:center;font-family:"BoldPixels",ui-monospace,monospace;
+    transition:opacity .35s}
+  #boot.gone{opacity:0;pointer-events:none}
+  #boot .in{width:min(420px,80vw);text-align:center}
+  #boot h1{margin:0 0 4px;font-size:19px;font-weight:400;letter-spacing:5px;color:#c07bff}
+  #boot p{margin:0 0 18px;font-size:11px;letter-spacing:2px;color:#5c5280}
+  #boot .bar{display:flex;gap:2px;height:20px}
+  #boot .bar i{flex:1;background:url("ui/usage-empty.png") 0 0/100% 100% no-repeat;
+    image-rendering:pixelated}
+  #boot .bar i.on{background-image:url("ui/usage-filled.png")}
+  #boot .pc{margin-top:9px;font-size:12px;letter-spacing:2px;color:#8f82ab}
+
   @media (max-width:1150px){#side{display:none}#wrap{right:0}#logs{right:12px}}
 </style></head><body>
 <div id="wrap"><canvas id="cv"></canvas></div>
 <div id="hud"><b id="act">…</b></div>
+
+<div id="boot"><div class="in">
+  <h1>RADE OFFICE</h1><p>LOADING THE ROOM</p>
+  <div class="bar" id="bootBar"></div>
+  <div class="pc" id="bootPc">0%</div>
+</div></div>
+
+<div id="card">
+  <div class="hd"><img id="cGem" src="ui/bot-idle.png" alt=""><b id="cName">–</b>
+    <span class="st" id="cState"></span><span class="x" id="cX">✕</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="kv"><span class="k">MODEL</span><span class="v" id="cModel">–</span></div>
+      <div class="kv"><span class="k">CONTEXT</span><span class="v" id="cCtx">–</span></div>
+      <div class="kv"><span class="k">OUTPUT TODAY</span><span class="v" id="cOut">–</span></div>
+      <div class="kv"><span class="k">INPUT TODAY</span><span class="v" id="cIn">–</span></div>
+      <div class="kv"><span class="k">CACHE READ</span><span class="v" id="cRead">–</span></div>
+      <div class="kv"><span class="k">CACHE WRITE</span><span class="v" id="cWrite">–</span></div>
+      <div class="kv"><span class="k">TURNS TODAY</span><span class="v" id="cTurns">–</span></div>
+      <div class="kv"><span class="k">SERVICE</span><span class="v" id="cSvc">–</span></div>
+    </div>
+    <div class="cap">TERMINAL</div>
+    <div id="term">–</div>
+  </div>
+</div>
 
 <div id="logs">
   <div class="top"><b>LIVE LOGS</b><button id="logClear">CLEAR</button></div>
@@ -125,9 +193,28 @@ const cv = document.getElementById("cv"), cx = cv.getContext("2d");
 const SEED = parseInt(new URLSearchParams(location.search).get("seed") || "0", 10);
 let _s = SEED >>> 0;
 const rnd = SEED ? () => ((_s = (_s * 1664525 + 1013904223) >>> 0) / 4294967296) : Math.random;
-const IMG = {}, load = (k, src) => new Promise(res => {
+/* Every sprite in the room is loaded before the first frame is drawn, which is
+   the better part of a thousand files: without a bar the page is a black
+   rectangle for as long as that takes and reads as broken. */
+let jobsDone = 0, jobsTotal = 0;
+const BOOT_SEGS = 24;
+function progress(){
+  const bar = document.getElementById("bootBar");
+  if (!bar.children.length)
+    bar.innerHTML = Array.from({length: BOOT_SEGS}, () => "<i></i>").join("");
+  const p = jobsTotal ? jobsDone / jobsTotal : 0;
+  [...bar.children].forEach((s, i) => s.classList.toggle("on", i < Math.round(p * BOOT_SEGS)));
+  document.getElementById("bootPc").textContent = Math.round(p * 100) + "%";
+}
+function tracked(p){
+  jobsTotal++;
+  return p.then(v => { jobsDone++; progress(); return v; },
+                e => { jobsDone++; progress(); throw e; });
+}
+
+const IMG = {}, load = (k, src) => tracked(new Promise(res => {
   const i = new Image(); i.onload = () => { IMG[k] = i; res(); }; i.onerror = () => res(); i.src = src;
-});
+}));
 
 let S = null, GRID = null, GW = 0, GH = 0, CELL = 10, W = 0, H = 0, SCALE = 1;
 
@@ -154,7 +241,7 @@ async function boot(){
   // the plates wear the same gems as the summary, so the canvas needs them too,
   // and the same pixel face, which canvas will not use until it is really loaded
   for (const k in GEM) jobs.push(load("gem:" + k, GEM[k]));
-  jobs.push(document.fonts.load('12px "BoldPixels"').catch(() => {}));
+  jobs.push(tracked(document.fonts.load('12px "BoldPixels"').catch(() => {})));
   const seen = new Set();
   for (const p of S.props) if (!seen.has(p.a)) { seen.add(p.a); jobs.push(load("a:" + p.a, "office/assets/" + p.a + ".png")); }
   for (const tag of CAST)
@@ -169,6 +256,9 @@ async function boot(){
   await bots();
   setInterval(bots, 5000);
   fit(); addEventListener("resize", fit);
+  const boot = document.getElementById("boot");
+  boot.classList.add("gone");
+  setTimeout(() => boot.style.display = "none", 400);
   requestAnimationFrame(frame);
 }
 
@@ -465,6 +555,7 @@ async function bots(){
     if (CREW) for (const A of CREW)
       if (A.mode !== undefined && mode(A) !== A.mode) plan(A, performance.now());
     board();
+    if (OPEN) card();               // the open card follows the same five second poll
   } catch (e) { /* the room keeps running without the dashboard */ }
 }
 
@@ -594,6 +685,7 @@ function plate(g, A, px, top){
   const sw = g.measureText(st.en).width;
   const w = Math.round(PAD * 2 + ICO + GAP + Math.max(nw, sw)), h = 40, tail = 6;
   const x = Math.round(px - w / 2), y = Math.round(top - h - tail - 5);
+  HITS.push({tag: A.tag, x0: x, y0: y, x1: x + w, y1: y + h});
 
   g.fillStyle = "#07050d";
   g.fillRect(x, y, w, h);
@@ -621,6 +713,73 @@ function plate(g, A, px, top){
   g.fillText(st.en, tx, y + 28);
   g.textBaseline = "alphabetic";
 }
+
+/* --------------------------------------------------- click somebody to look */
+/* Everyone in the room is a bot, so the room itself is the index: clicking a
+   character opens what the dashboard knows about it, down to the tail of the
+   session it is running right now. */
+let HITS = [], OPEN = null;
+
+function num(n){
+  if (n == null) return "–";
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "k";
+  return String(n);
+}
+
+function card(){
+  const el = document.getElementById("card");
+  const b = OPEN && WHOSE[OPEN];
+  if (!b) { el.classList.remove("on"); return; }
+  const key = b.updating ? "updating" : (STATE[b.state] ? b.state : "idle");
+  const set = (id, v) => document.getElementById(id).textContent = v;
+  document.getElementById("cGem").src = GEM[key];
+  set("cName", b.name + (b.fa ? "  ·  " + b.fa : ""));
+  const st = document.getElementById("cState");
+  st.textContent = STATE[key].en.toUpperCase(); st.style.color = STATE[key].c;
+
+  const t = b.tokens || {};
+  set("cModel", b.model || (KEY ? "–" : "token required"));
+  set("cCtx", b.ctxk != null ? b.ctxk + "k / " + b.ctxmax + "k  (" + b.ctx + "%)"
+              : b.ctx != null ? b.ctx + "%" : "–");
+  set("cOut", num(t.out)); set("cIn", num(t.in));
+  set("cRead", num(t.read)); set("cWrite", num(t.write));
+  set("cTurns", t.turns == null ? "–" : String(t.turns));
+  set("cSvc", b.managed ? "systemd · always on" : "manual");
+
+  const term = document.getElementById("term");
+  const pane = b.pane || [];
+  if (!pane.length) {
+    term.textContent = KEY ? (b.state === "off" ? "session is not running"
+                                                : "nothing on the pane")
+                           : "open the page with the token to read the session";
+  } else {
+    term.innerHTML = pane.map(l => {
+      const cls = /^\s*[✻✽✶✳✢✴✱*]\s/.test(l) ? "cur" : /^\s*[·>⏵╭╰│]/.test(l) ? "dim" : "";
+      return cls ? '<span class="' + cls + '">' + esc(l) + "</span>" : esc(l);
+    }).join("\n");
+    term.scrollTop = term.scrollHeight;
+  }
+  el.classList.add("on");
+}
+
+function pick(ev){
+  const r = cv.getBoundingClientRect();
+  const x = (ev.clientX - r.left) / SCALE, y = (ev.clientY - r.top) / SCALE;
+  let hit = null;
+  for (const h of HITS)
+    if (x >= h.x0 && x <= h.x1 && y >= h.y0 && y <= h.y1 && (!hit || h.y1 > hit.y1)) hit = h;
+  return hit;
+}
+cv.addEventListener("click", ev => {
+  const h = pick(ev);
+  if (!h) return;
+  OPEN = OPEN === h.tag ? null : h.tag;
+  card();
+});
+cv.addEventListener("mousemove", ev => { cv.style.cursor = pick(ev) ? "pointer" : "default"; });
+document.getElementById("cX").onclick = () => { OPEN = null; card(); };
+addEventListener("keydown", e => { if (e.key === "Escape" && OPEN) { OPEN = null; card(); } });
 
 /* Two z's drifting off the head of whoever is asleep, so a still sprite reads as
    sleeping and not as a character that froze. */
@@ -676,6 +835,7 @@ function frame(now){
   }}));
 
   const plates = [];
+  HITS = [];
   for (const A of CREW) {
     const [sp, meta, rk] = frameOf(A, A.row, A.fi);
     const k = K[A.tag] * rk;
@@ -684,6 +844,8 @@ function frame(now){
     plates.push({A, px: Math.round(px), top: Math.round(py - ch)});
     // hang the frame from the middle of the torso, not the middle of the frame
     const ox = Math.round((meta.ax !== undefined ? meta.ax : meta.w / 2) * k);
+    if (WHOSE[A.tag])
+      HITS.push({tag: A.tag, x0: px - ox, y0: py - ch, x1: px - ox + cw, y1: py});
     list.push({y: A.seat ? A.seat.sortY : A.y, z: (A.seat && A.seat.z) || 0, run: () => {
       if (!sp) return;
       if (!A.seat) {
