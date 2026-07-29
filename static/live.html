@@ -4,7 +4,8 @@
 <style>
   html,body{height:100%;margin:0;background:#07060c;color:#8f82ab;
     font:12px ui-monospace,Menlo,Consolas,monospace;overflow:hidden}
-  #wrap{position:absolute;inset:0;right:322px;bottom:182px;display:grid;place-items:center}
+  #wrap{position:absolute;inset:0;right:322px;bottom:182px;overflow:hidden;
+    display:grid;justify-items:center;align-items:end}
   canvas{image-rendering:pixelated;display:block}
   #hud{position:absolute;left:10px;top:10px;background:rgba(12,9,20,.8);
     border:1px solid #2f2646;border-radius:5px;padding:6px 9px;letter-spacing:1px}
@@ -173,7 +174,15 @@ async function boot(){
 
 function fit(){
   const box = document.getElementById("wrap").getBoundingClientRect();
-  SCALE = Math.min(box.width / W, box.height / H);
+  // The room fills the width, always: letterboxing it left two black margins
+  // beside a picture that is meant to run from the edge of the screen to the
+  // edge of the panel. What does not fit is taken off the top, which is bare
+  // wall, and never off the bottom, which is the floor people walk on.
+  // ...up to a point: on a very wide window filling the width would push the
+  // back wall and the desks under it off the top, so the crop is capped at the
+  // bare wall above them and the picture is fitted after that.
+  const fill = box.width / W, fitH = box.height / H;
+  SCALE = fill <= fitH / 0.7 ? fill : fitH;
   const dpr = Math.min(2, devicePixelRatio || 1);
   cv.width = Math.round(W * SCALE * dpr); cv.height = Math.round(H * SCALE * dpr);
   cv.style.width = (W * SCALE) + "px"; cv.style.height = (H * SCALE) + "px";
@@ -265,7 +274,7 @@ const SPEED = 92;                                    // room px per second
 const STRIDE = 140;                                  // room px per full cycle
 const FACE_HOLD = 180;                               // ms a new facing must be
                                                      // wanted before it sticks
-const busy = {sofa: null, coffee: null, desks: {}};   // who is using what
+const busy = {seats: {}, coffee: null, desks: {}};   // who is using what
 
 function facing(dx, dy){
   // screen delta -> the eight isometric names; y counts double because the
@@ -298,9 +307,16 @@ function frameOf(A, row, i){
 }
 
 function release(A){
-  if (busy.sofa === A) busy.sofa = null;
+  for (const k in busy.seats) if (busy.seats[k] === A) delete busy.seats[k];
   if (busy.coffee === A) busy.coffee = null;
   for (const k in busy.desks) if (busy.desks[k] === A) delete busy.desks[k];
+}
+
+// a free cushion, picked at random so the same end of the sofa is not always
+// the one that fills up first
+function freeSeat(){
+  const open = (S.spots.seats || []).map((s, i) => i).filter(i => !busy.seats[i]);
+  return open.length ? open[Math.floor(rnd() * open.length)] : -1;
 }
 
 function goto(A, spot, then, now){
@@ -332,24 +348,33 @@ function myDesk(A){
 }
 
 function plan(A, now){
-  A.seat = null; release(A);
   const m = A.mode = mode(A);
   const desk = myDesk(A);
-  if (m !== "free" && desk) return goto(A, desk, m, now);
 
-  // Off duty. Half the time whatever they are already doing simply goes on for
-  // another while, so leaving the seat stays the exception.
-  if ((A.state === "sofa" || A.state === "drink" || A.state === "type") && rnd() < 0.5) {
-    A.until = now + 40000 + rnd() * 80000;
-    return;
-  }
-  const r = ONLY === "sofa" ? 0 : ONLY === "coffee" ? .3 : ONLY === "desk" ? .6 : ONLY === "look" ? .9 : rnd();
-  if (r < 0.22 && S.spots.sofa && !busy.sofa) {
-    busy.sofa = A; goto(A, S.spots.sofa, "sofa", now);
-  } else if (r < 0.40 && S.spots.coffee && !busy.coffee) {
+  // Staying put is decided first, and only then is the seat given up. Clearing
+  // it up here is what left somebody sitting in mid air: the pose said "at a
+  // desk" while the seat that put him at one had already been thrown away.
+  const settled = m === "work"  ? A.state === "type"
+                : m === "sleep" ? A.state === "sleep"
+                : A.state === "sofa" || A.state === "drink" || A.state === "sleep";
+  if (settled && rnd() < 0.5) { A.until = now + 40000 + rnd() * 80000; return; }
+
+  A.seat = null; release(A);
+  // Only a bot that is really taking a turn sits at its keyboard. Anyone else is
+  // off duty, and an office where an idle machine types away is exactly the lie
+  // this room is here not to tell: they sleep in their own chair, take the sofa,
+  // fetch a coffee or walk about.
+  if (m === "work" && desk) return goto(A, desk, "work", now);
+  if (m === "sleep" && desk) return goto(A, desk, "sleep", now);
+
+  const r = ONLY === "sofa" ? 0 : ONLY === "coffee" ? .35 : ONLY === "desk" ? .6 : ONLY === "look" ? .9 : rnd();
+  const seat = freeSeat();
+  if (r < 0.30 && seat >= 0) {
+    busy.seats[seat] = A; goto(A, S.spots.seats[seat], "sofa", now);
+  } else if (r < 0.45 && S.spots.coffee && !busy.coffee) {
     busy.coffee = A; goto(A, S.spots.coffee, "coffee", now);
-  } else if (r < 0.84 && desk) {
-    goto(A, desk, "desk", now);
+  } else if (r < 0.78 && desk) {
+    goto(A, desk, "sleep", now);        // a nap in their own chair
   } else wander(A, now);
 }
 
@@ -370,7 +395,6 @@ function arrive(A, now){
   else if (what === "sleep")  { A.state = "sleep"; A.until = now + 180000 + rnd() * 180000; A.act = "asleep"; }
   else if (what === "sofa")   { A.state = "sofa";  A.until = now + 40000 + rnd() * 60000; A.act = "on the sofa"; }
   else if (what === "coffee") { A.state = "drink"; A.until = now + 25000 + rnd() * 35000; A.act = "coffee"; }
-  else if (what === "desk")   { A.state = "type";  A.until = now + 60000 + rnd() * 90000; A.act = "typing"; }
   else { A.state = "react"; A.until = now + 9000 + rnd() * 9000; A.emote = 1 + Math.floor(rnd() * 7); A.act = "…"; release(A); }
 }
 

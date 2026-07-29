@@ -50,7 +50,11 @@ TUNE = {
     "desk": {"sit": [-61, -18]},        # fallback only: a desk with no chair
     "chair": {"sit": [0, -4]},          # where the body sits on the chair it was
                                         # given, measured off the chair's own foot
-    "sofa": {"sit": [34, -58]},
+    # the sofa seats three: one offset for the middle cushion and the step from
+    # one cushion to the next, which in an isometric room is a move along the
+    # floor's own axis rather than straight sideways
+    "sofa": {"sit": [34, -58], "step": [52, -18], "seats": 3},
+    "couch": {"sit": [4, -18]},         # the single armchair by the bookcase
 }
 
 
@@ -192,7 +196,7 @@ def spots(items, m, t):
     depth key it must sort by — a chair behind a desk has to draw *before* the
     desk or the desk stops hiding his legs.
     """
-    out = {"desks": [], "sofa": None, "coffee": None}
+    out = {"desks": [], "seats": [], "coffee": None}
     seat_of = pair_chairs(items)
     for it in items:
         a, x, y = it["asset"], it["x"], it["y"]
@@ -224,13 +228,27 @@ def spots(items, m, t):
             # the body and the desk still hides the legs
             out["desks"].append({"walk": walk,
                                  "sit": {"x": seat["x"], "y": seat["y"], "sortY": y - 1}})
-        elif a == "sofa" and out["sofa"] is None:
-            # the coffee table sits right against the front of the sofa, so the
-            # only floor next to it is off its right arm: seat him on the right
-            # cushion too, or he crosses the whole sofa in one frame
-            out["sofa"] = {"walk": {"x": x + 176, "y": y + 6},
-                           "sit": {"x": x + t["sofa"]["sit"][0], "y": y + t["sofa"]["sit"][1],
-                                   "sortY": y + 2, "z": it.get("z", 0)}}
+        elif a == "sofa":
+            # A three seater is three seats. They sit along the sofa's own axis,
+            # which runs up and to the right at the floor's ratio, and they are
+            # drawn front cushion last so the near one is not hidden behind the
+            # far one. The coffee table sits right against the front, so the only
+            # floor to approach from is off the right arm, shared by all three.
+            s = t["sofa"]
+            sx, sy = s["sit"]
+            dx, dy = s.get("step", [52, -18])
+            n = int(s.get("seats", 3))
+            for i in range(n):
+                k = i - (n - 1) / 2.0                      # -1, 0, +1 for three
+                out["seats"].append({
+                    "walk": {"x": x + 176, "y": y + 6},
+                    "sit": {"x": round(x + sx + dx * k), "y": round(y + sy + dy * k),
+                            "sortY": y + 2 - k, "z": it.get("z", 0)}})
+        elif a == "single-couch":
+            cx0, cy0 = t.get("couch", {}).get("sit", [4, -18])
+            out["seats"].append({"walk": {"x": x - 104, "y": y + 12},
+                                 "sit": {"x": x + cx0, "y": y + cy0,
+                                         "sortY": y + 2, "z": it.get("z", 0)}})
         elif a.startswith("coffee") and out["coffee"] is None:
             # `coffee-frame` is the neon sign on the wall, not the counter: stand
             # in front of whatever piece of furniture is under it, otherwise the
@@ -270,9 +288,9 @@ def snap(out, grid):
                         return True
         return False
 
-    for k in ("sofa", "coffee"):
-        if out.get(k) and not fix(out[k]["walk"]):
-            out[k] = None
+    if out.get("coffee") and not fix(out["coffee"]["walk"]):
+        out["coffee"] = None
+    out["seats"] = [s for s in out["seats"] if fix(s["walk"])]
     # a desk walled in behind other furniture has no approach at all. Keeping it
     # on the list only means somebody claims it, never gets there and stands
     # still; it is dropped instead.
@@ -290,6 +308,31 @@ SHRINK = 0.5                   # the model draws a walk frame about 320 px tall
                                # and the page paints it at 140: shipping the
                                # originals is 64 MB of PNG for pixels nobody
                                # ever sees, so they are halved on the way out
+
+
+KEY = (255, 0, 255)            # the magenta the sheets were drawn against
+
+
+def dekey(im):
+    """Take the last of the magenta backdrop off a frame.
+
+    The extractor cut the sheet on the key colour and left two kinds of crumb: a
+    few solid magenta pixels the cut missed, and a half-transparent violet rim
+    along every outline. Neither can be removed by colour alone — nia's hair is
+    a pink close enough to the key to be deleted with it — so the test is colour
+    *and* opacity: art is solid, so a pixel that is only part way opaque and
+    leans magenta is backdrop, while a solid pixel has to be all but the key
+    itself before it is thrown away.
+    """
+    a = np.asarray(im).astype(int)
+    r, g, b, al = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
+    d = np.maximum(np.maximum(abs(r - KEY[0]), abs(g - KEY[1])), abs(b - KEY[2]))
+    drop = (al > 0) & ((d <= 60) | ((al < 255) & (d <= 140)))
+    if not drop.any():
+        return im
+    out = a.copy()
+    out[drop, 3] = 0
+    return Image.fromarray(out.astype(np.uint8), "RGBA")
 
 
 def shrink(im):
@@ -367,7 +410,7 @@ def chars(tag, scale):
     for f in sorted(os.listdir(src)):
         if not f.endswith(".png"):
             continue
-        im = shrink(Image.open(os.path.join(src, f)).convert("RGBA"))
+        im = shrink(dekey(Image.open(os.path.join(src, f)).convert("RGBA")))
         im.quantize(colors=192, method=Image.FASTOCTREE).save(os.path.join(dst, f))
         row = f.split("_")[0]
         rows.setdefault(row, []).append({"f": f[:-4], "w": im.width, "h": im.height,
