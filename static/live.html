@@ -10,78 +10,87 @@
     border:1px solid #2f2646;border-radius:5px;padding:6px 9px;letter-spacing:1px}
   #hud b{color:#b57bff;font-weight:400}
 
-  /* the console down the right: the machine this office runs on, the bots the
-     people in it stand for, and whether the uplink is up */
-  #side{position:absolute;top:12px;right:12px;bottom:12px;width:298px;
-    overflow:auto;display:flex;flex-direction:column;gap:14px}
-  #side h3{margin:0;padding:0 2px 7px;font-size:11px;font-weight:400;
-    letter-spacing:2.4px;color:#b57bff;display:flex;align-items:center;
-    cursor:pointer;user-select:none}
-  #side h3 .cv{margin-left:auto;color:#6b5f85;transition:transform .12s}
-  #side h3.shut .cv{transform:rotate(-90deg)}
-  #side h3.shut + .body{display:none}
-  .card{background:rgba(12,9,20,.82);border:1px solid #2f2646;border-radius:6px;
-    padding:8px 10px;margin-bottom:7px}
-  .card .hd{display:flex;align-items:center;gap:9px}
-  .card .lb{flex:1;letter-spacing:1.6px;color:#c3b7e0}
-  .card .vl{color:#ece5f7;font-size:13px}
-  .card .sub{font-size:10px;color:#6b5f85;margin-top:3px;letter-spacing:1px}
-  canvas.ico{width:18px;height:18px;flex:none;image-rendering:pixelated}
-  canvas.spk{display:block;width:100%;height:18px;margin-top:6px;
-    image-rendering:pixelated;opacity:.9}
-  .bot{display:flex;align-items:center;gap:9px;padding:7px 10px;cursor:pointer;
-    border:1px solid transparent;border-radius:6px}
-  .bot:hover{border-color:#2f2646;background:rgba(12,9,20,.82)}
-  .bot .n{color:#b57bff;width:12px}
-  .bot .nm{flex:1;color:#c3b7e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .bot .st{font-size:10px;letter-spacing:1.6px}
-  .bot i{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block}
-  #uplink{display:flex;align-items:center;gap:9px}
-  #uplink .big{flex:1;letter-spacing:1.6px;font-size:13px}
-  #uplink .code{font-size:10px;color:#6b5f85}
+  /* The console down the right, drawn from the pack art rather than from CSS
+     shapes: the gems and the meter segments are the same pixel art the room is
+     made of, so the panel belongs to the same picture. */
+  @font-face{font-family:"BoldPixels";src:url("font/boldpixels.woff2") format("woff2"),
+    url("font/boldpixels.woff") format("woff");font-display:swap}
+  #side{position:absolute;top:12px;right:12px;bottom:12px;width:300px;
+    overflow:auto;display:flex;flex-direction:column;gap:12px;
+    font-family:"BoldPixels",ui-monospace,monospace}
+  .box{background:#0c0a14;border:2px solid #7b3fd4;border-radius:10px;padding:11px 13px}
+  .box > h3{margin:0 0 9px;padding:0 0 9px;font-size:15px;font-weight:400;
+    letter-spacing:2px;color:#f0eafc;border-bottom:1px solid #35235c;
+    display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
+  .box > h3 img{width:17px;height:17px;image-rendering:pixelated}
+  .box > h3 .cv{margin-left:auto;font-size:11px;color:#6b5f85;transition:transform .12s}
+  .box > h3.shut .cv{transform:rotate(-90deg)}
+  .box > h3.shut + .body{display:none}
+
+  .mrow{padding:10px 0;border-bottom:1px solid #241a3f}
+  .mrow:last-child{border-bottom:0;padding-bottom:2px}
+  .mrow .hd{display:flex;align-items:baseline;font-size:14px;letter-spacing:1.4px}
+  .mrow .lb{flex:1;color:#e6dff5}
+  .mrow .vl{color:#c07bff}
+  .bar{display:flex;gap:2px;height:23px;margin-top:7px}
+  .bar i{flex:1;background:url("ui/usage-empty.png") 0 0/100% 100% no-repeat;
+    image-rendering:pixelated}
+  .bar i.on{background-image:url("ui/usage-filled.png")}
+  .bar.amber i{background-image:url("ui/usage-empty-amber.png")}
+  .bar.amber i.on{background-image:url("ui/usage-filled-amber.png")}
+  .bar.green i{background-image:url("ui/usage-empty-green.png")}
+  .bar.green i.on{background-image:url("ui/usage-filled-green.png")}
+
+  .brow{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:14px;
+    letter-spacing:1px;color:#e6dff5;cursor:pointer;border-radius:6px}
+  .brow:hover{background:#171128}
+  .brow img{width:15px;height:15px;image-rendering:pixelated}
+  .brow .nm{flex:1}
+  .brow .ct{color:#f0eafc}
+
+  #srv{display:flex;align-items:flex-end;gap:10px}
+  #srv .rack{height:104px;image-rendering:pixelated;margin-left:22px}
+  #srv .say{flex:1;text-align:right;font-size:13px;line-height:1.5;letter-spacing:1px;
+    color:#cfc6e6;padding-bottom:4px}
+  #srv .say b{display:block;font-weight:400}
+  #srv .badge{width:26px;height:26px;image-rendering:pixelated;
+    position:absolute;left:13px;bottom:11px}
+  #srvBox{position:relative}
   @media (max-width:1150px){#side{display:none}#wrap{right:0}}
 </style></head><body>
 <div id="wrap"><canvas id="cv"></canvas></div>
 <div id="hud"><b id="act">…</b></div>
 
 <div id="side">
-  <section>
-    <h3>SYSTEM STATUS<span class="cv">▾</span></h3>
+  <div class="box">
+    <h3><canvas id="iSys" width="9" height="9" style="width:17px;height:17px;image-rendering:pixelated"></canvas>SYSTEM STATUS<span class="cv">▾</span></h3>
     <div class="body">
-      <div class="card">
-        <div class="hd"><canvas class="ico" id="iCpu" width="9" height="9"></canvas>
-          <span class="lb">CPU</span><span class="vl" id="sCpu">–</span></div>
-        <canvas class="spk" id="kCpu" width="140" height="18"></canvas>
-      </div>
-      <div class="card">
-        <div class="hd"><canvas class="ico" id="iRam" width="9" height="9"></canvas>
-          <span class="lb">RAM</span><span class="vl" id="sRam">–</span></div>
-        <canvas class="spk" id="kRam" width="140" height="18"></canvas>
-      </div>
-      <div class="card">
-        <div class="hd"><canvas class="ico" id="iDisk" width="9" height="9"></canvas>
-          <span class="lb">DISK</span><span class="vl" id="sDisk">–</span></div>
-        <div class="sub" id="sDiskF"></div></div>
-      <div class="card">
-        <div class="hd"><canvas class="ico" id="iLoad" width="9" height="9"></canvas>
-          <span class="lb">LOAD</span><span class="vl" id="sLoad">–</span></div>
-        <div class="sub" id="sCores"></div></div>
-      <div class="card">
-        <div class="hd"><canvas class="ico" id="iUp" width="9" height="9"></canvas>
-          <span class="lb">UPTIME</span><span class="vl" id="sUp">–</span></div></div>
+      <div class="mrow"><div class="hd"><span class="lb">CPU USAGE</span><span class="vl" id="sCpu">–</span></div>
+        <div class="bar" id="bCpu"></div></div>
+      <div class="mrow"><div class="hd"><span class="lb">RAM USAGE</span><span class="vl" id="sRam">–</span></div>
+        <div class="bar" id="bRam"></div></div>
+      <div class="mrow"><div class="hd"><span class="lb">LOAD</span><span class="vl" id="sLoad">–</span></div>
+        <div class="bar amber" id="bLoad"></div></div>
+      <div class="mrow"><div class="hd"><span class="lb">DISK USED</span><span class="vl" id="sDisk">–</span></div>
+        <div class="bar green" id="bDisk"></div></div>
+      <div class="mrow"><div class="hd"><span class="lb">UPTIME</span>
+        <span class="vl" id="sUp" style="color:#6fc6ff">–</span></div></div>
     </div>
-  </section>
-  <section>
-    <h3>BOTS STATUS<span class="cv">▾</span></h3>
+  </div>
+
+  <div class="box">
+    <h3>BOTS SUMMARY<span class="cv">▾</span></h3>
     <div class="body" id="blist"></div>
-  </section>
-  <section>
-    <h3>API CONNECTION<span class="cv">▾</span></h3>
-    <div class="body"><div class="card"><div id="uplink">
-      <canvas class="ico" id="iApi" width="9" height="9"></canvas>
-      <span class="big" id="sApi">…</span><span class="code" id="sApiC"></span>
-    </div></div></div>
-  </section>
+  </div>
+
+  <div class="box" id="srvBox">
+    <h3>SERVER<span class="cv">▾</span></h3>
+    <div class="body"><div id="srv">
+      <img class="rack" src="ui/server.png" alt="">
+      <img class="badge" id="srvBadge" src="ui/bot-running.png" alt="">
+      <div class="say"><b id="srvA">All Systems</b><b id="srvB" style="color:#5ef08a">Operational</b></div>
+    </div></div>
+  </div>
 </div>
 <script>
 const cv = document.getElementById("cv"), cx = cv.getContext("2d");
@@ -412,80 +421,78 @@ async function bots(){
 }
 
 /* ------------------------------------------------------------- the console */
-// 9x9 glyphs in the same spirit as the state icons above: pixel art, not a font
-const SICON = {
-  cpu :["  XXXXX  ","  X   X  ","XXX   XXX","  X X X  ","XXX X XXX",
-        "  X   X  ","  XXXXX  ","         ","         "],
-  ram :["XXXXXXXXX","X X X X X","X X X X X","X X X X X","XXXXXXXXX",
-        "  X   X  ","         ","         ","         "],
-  disk:["XXXX     ","X   XXXXX","X       X","X  XXX  X","X       X",
-        "XXXXXXXXX","         ","         ","         "],
-  load:["  XXXXX  "," X     X ","X   X   X","X  X    X","X       X",
-        " X     X ","  XXXXX  ","         ","         "],
-  up  :["  XXXXX  "," X     X ","X   X   X","X   X   X","X   XXX X",
-        " X     X ","  XXXXX  ","         ","         "],
-  api :["  XXXXX  "," X  X  X ","X   X   X","XXXXXXXXX","X   X   X",
-        " X  X  X ","  XXXXX  ","         ","         "],
-};
-function glyph(id, key, col){
-  const c = document.getElementById(id); if (!c) return;
+const SEGS = 16;                       // segments in a meter, as the design has it
+
+function meter(id, pct){
+  const el = document.getElementById(id); if (!el) return;
+  if (!el.children.length)
+    el.innerHTML = Array.from({length: SEGS}, () => "<i></i>").join("");
+  // round up, so any load at all lights the first segment: a meter that reads
+  // empty while something is running is worse than one segment of a lie
+  const on = pct == null ? 0 : Math.min(SEGS, Math.ceil(pct / 100 * SEGS));
+  [...el.children].forEach((s, i) => s.classList.toggle("on", i < on));
+}
+// the little bar-chart on the SYSTEM STATUS heading
+function sysGlyph(){
+  const c = document.getElementById("iSys"); if (!c) return;
   const g = c.getContext("2d");
-  g.clearRect(0, 0, 9, 9); g.fillStyle = col;
-  SICON[key].forEach((row, r) => [...row].forEach((ch, b) => { if (ch === "X") g.fillRect(b, r, 1, 1); }));
+  g.clearRect(0, 0, 9, 9); g.fillStyle = "#c07bff";
+  g.fillRect(0, 5, 2, 4); g.fillRect(3, 2, 2, 7); g.fillRect(6, 0, 2, 9);
 }
-const HIST = {cpu: [], ram: []};
-function spark(id, arr, col){
-  const c = document.getElementById(id); if (!c) return;
-  const g = c.getContext("2d"), w = c.width, h = c.height;
-  g.clearRect(0, 0, w, h);
-  const n = Math.floor(w / 3);
-  arr.slice(-n).forEach((v, i) => {
-    const bh = Math.max(1, Math.round(v / 100 * (h - 1)));
-    g.fillStyle = col; g.fillRect(i * 3, h - bh, 2, bh);
-  });
-}
-let glyphsDrawn = false;
+
+// what the room calls a state -> what the summary calls it. `updating` is a bot
+// the server was told to restart and that has not come back yet.
+const SUMMARY = [
+  ["running",  "Running"],
+  ["idle",     "Idle"],
+  ["error",    "Error"],
+  ["updating", "Updating"],
+  ["off",      "Offline"],
+];
+const GEM = {running:"ui/bot-running.png", idle:"ui/bot-idle.png", error:"ui/bot-error.png",
+             updating:"ui/bot-updating.png", off:"ui/bot-offline.png"};
+
+let glyphDrawn = false;
 function board(){
   const m = MACHINE;
-  if (m.cpu != null) { HIST.cpu.push(m.cpu); if (HIST.cpu.length > 80) HIST.cpu.shift(); }
-  if (m.ram != null) { HIST.ram.push(m.ram); if (HIST.ram.length > 80) HIST.ram.shift(); }
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-  set("sCpu", m.cpu == null ? "–" : m.cpu + "%");
-  set("sRam", m.ram == null ? "–" : m.ram + "%");
-  set("sDisk", m.disk == null ? "–" : m.disk + "%");
-  set("sDiskF", m.disk_free_gb == null ? "" : m.disk_free_gb + " GB FREE");
-  set("sLoad", m.load == null ? "–" : m.load);
-  set("sCores", m.cores ? m.cores + " CORES · " + (m.ram_gb || "?") + " GB" : "");
-  set("sUp", m.uptime || "–");
-  spark("kCpu", HIST.cpu, "#5ef08a");
-  spark("kRam", HIST.ram, "#7cc4ff");
-  if (!glyphsDrawn) {
-    glyphsDrawn = true;
-    glyph("iCpu", "cpu", "#5ef08a"); glyph("iRam", "ram", "#7cc4ff");
-    glyph("iDisk", "disk", "#ffb020"); glyph("iLoad", "load", "#b57bff");
-    glyph("iUp", "up", "#8f82ab");
-  }
+  if (!glyphDrawn) { glyphDrawn = true; sysGlyph(); }
 
+  set("sCpu", m.cpu == null ? "–" : m.cpu + "%");   meter("bCpu", m.cpu);
+  set("sRam", m.ram == null ? "–" : m.ram + "%");   meter("bRam", m.ram);
+  // load against the core count is the honest version of a queue: how much work
+  // this box has been asked for against how much of it there is
+  const cores = m.cores || 1;
+  set("sLoad", m.load == null ? "–" : m.load + " / " + cores);
+  meter("bLoad", m.load == null ? null : m.load / cores * 100);
+  set("sDisk", m.disk == null ? "–" : m.disk + "%"); meter("bDisk", m.disk);
+  set("sUp", m.uptime || "–");
+
+  const count = {};
+  BOTS.forEach(b => { const k = b.updating ? "updating" : b.state;
+                      count[k] = (count[k] || 0) + 1; });
   const list = document.getElementById("blist");
-  list.innerHTML = BOTS.map((b, i) => {
-    const st = STATE[b.state] || STATE.idle;
-    return '<div class="bot" data-i="' + i + '"><span class="n">' + (i + 1) + '</span>' +
-      '<span class="nm">' + b.name + '</span>' +
-      '<span class="st" style="color:' + st.c + '">' + b.state.toUpperCase() + '</span>' +
-      '<i style="background:' + b.color + '"></i></div>';
-  }).join("");
-  // clicking a bot points the room at the person who stands for it
+  list.innerHTML = SUMMARY.map(([k, label]) =>
+    '<div class="brow" data-k="' + k + '"><img src="' + GEM[k] + '" alt="">' +
+    '<span class="nm">' + label + '</span>' +
+    '<span class="ct">' + (count[k] || 0) + '</span></div>').join("");
+  // clicking a line names the bots that are in that state
   [...list.children].forEach(el => el.onclick = () => {
-    const b = BOTS[+el.dataset.i]; if (!b) return;
-    document.getElementById("act").textContent = b.name + " · " + b.fa + " · " + b.state;
+    const k = el.dataset.k;
+    const who = BOTS.filter(b => (b.updating ? "updating" : b.state) === k).map(b => b.name);
+    document.getElementById("act").textContent = who.length ? who.join("   ") : "—";
   });
 
-  const ok = UPLINK.ok === true;
-  const el = document.getElementById("sApi");
-  el.textContent = UPLINK.ok == null ? "PROBING…" : ok ? "CONNECTED" : "UNREACHABLE";
-  el.style.color = UPLINK.ok == null ? "#6b5f85" : ok ? "#5ef08a" : "#ff5f6b";
-  set("sApiC", UPLINK.code == null ? "" : String(UPLINK.code));
-  glyph("iApi", "api", UPLINK.ok == null ? "#6b5f85" : ok ? "#5ef08a" : "#ff5f6b");
+  // one line for the whole box: the uplink first, then anything a bot is shouting
+  const bad = BOTS.filter(b => b.state === "error").length;
+  let a = "All Systems", b = "Operational", col = "#5ef08a", gem = "running";
+  if (UPLINK.ok === false)      { a = "API Uplink"; b = "Unreachable"; col = "#ff5f6b"; gem = "error"; }
+  else if (UPLINK.ok == null)   { a = "Uplink";     b = "Probing…";    col = "#8f82ab"; gem = "offline"; }
+  else if (bad)                 { a = bad + (bad > 1 ? " Bots" : " Bot"); b = "In Error";
+                                  col = "#ffb020"; gem = "idle"; }
+  set("srvA", a); set("srvB", b);
+  document.getElementById("srvB").style.color = col;
+  document.getElementById("srvBadge").src = GEM[gem];
 }
 [...document.querySelectorAll("#side h3")].forEach(h =>
   h.onclick = () => h.classList.toggle("shut"));

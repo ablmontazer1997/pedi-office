@@ -54,6 +54,10 @@ _log_seq = [0]
 _last_line = {}
 _last_state = {}
 _busy_at = {}
+# when a restart was asked for. Until the session answers again the bot is
+# neither off nor idle, it is coming back, and the summary says so.
+_restart_at = {}
+RESTART_GRACE = 90
 _cache = {"t": 0.0, "data": None}
 _cpu_prev = [None]
 _api = {"ok": None, "code": "…", "t": 0}
@@ -223,6 +227,11 @@ def status():
     out = []
     for i, (sock, label, fa, colour) in enumerate(BOTS):
         info = probe(sock)
+        since = time.time() - _restart_at.get(sock, 0)
+        if since < RESTART_GRACE and info["state"] in ("off", "idle"):
+            info["updating"] = True          # asked to restart, not back yet
+        elif sock in _restart_at and info["state"] == "running":
+            _restart_at.pop(sock, None)      # it answered: it is just working now
         info.update({"id": sock, "name": label, "fa": fa, "color": colour,
                      "n": i + 1, "managed": sock in SYSTEMD})
         out.append(info)
@@ -261,6 +270,8 @@ def act(bot_id, action):
     if action in ("restart", "stop"):
         subprocess.run(["tmux", "-L", bot_id, "kill-server"], capture_output=True, timeout=10)
         log(name, "%s requested" % action, "warn")
+        if action == "restart":
+            _restart_at[bot_id] = time.time()
         if action == "stop":
             return True, "stopped"
         if managed:
@@ -272,6 +283,7 @@ def act(bot_id, action):
             return True, "systemd will bring it back"
         if not os.path.isfile(runner):
             return False, "run-service.sh not found"
+        _restart_at[bot_id] = time.time()
         subprocess.Popen(["setsid", "bash", runner], stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
         log(name, "start requested", "ok")
@@ -282,7 +294,7 @@ def act(bot_id, action):
 
 # what a visitor without the token may load: the world page and its art only
 PUBLIC_PAGES = {"world.html", "world.js", "room.html", "live.html"}
-PUBLIC_DIRS = {"limezu", "font", "office"}
+PUBLIC_DIRS = {"limezu", "font", "office", "ui"}
 
 
 def public_status():
