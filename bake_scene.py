@@ -15,6 +15,7 @@ The character frames are copied under static/ too, with their trimmed sizes, so
 the page can anchor every frame on its own feet.
 """
 import json
+import math
 import os
 import shutil
 
@@ -30,7 +31,7 @@ SEATS = os.path.join(HERE, "seats.json")
 WALK = os.path.join(HERE, "walk.json")
 
 CELL = 10                      # collision cell, in room pixels
-BODY = 1                       # cells of clearance kept around every obstacle.
+BODY = 2                       # cells of clearance kept around every obstacle.
                                # The pathfinder only ever tests the cell under
                                # the feet, but a character is about seven cells
                                # wide, so without this his shoulder walks
@@ -46,9 +47,34 @@ WALL = 54                      # and further off the back walls: the wall is par
 TUNE = {
     "stand": 140,                       # height of a standing sprite, room px
     "rowScale": {"r1": 1.15, "r13": 1.00, "r2": 0.90, "r3": 0.90, "r11": 0.90},
-    "desk": {"sit": [-61, -18]},        # where the typist sits behind a desk
+    "desk": {"sit": [-61, -18]},        # fallback only: a desk with no chair
+    "chair": {"sit": [0, -4]},          # where the body sits on the chair it was
+                                        # given, measured off the chair's own foot
     "sofa": {"sit": [34, -58]},
 }
+
+
+def pair_chairs(items):
+    """Match every desk with the chair that was put in front of it.
+
+    The seat used to hang off the desk by a fixed offset, which is why the body
+    floated a hand's width above a chair that had been dragged somewhere slightly
+    else. The chair is what a viewer reads as the seat, so the chair decides where
+    the body sits. Nearest pair first, one chair per desk, so two desks standing
+    close together cannot both claim the same chair.
+    """
+    desks = [it for it in items if it["asset"] == "desk"]
+    chairs = [it for it in items if it["asset"] == "chair"]
+    pairs = sorted(((math.hypot(d["x"] - c["x"], d["y"] - c["y"]), i, j)
+                    for i, d in enumerate(desks) for j, c in enumerate(chairs)),
+                   key=lambda p: p[0])
+    out, tookD, tookC = {}, set(), set()
+    for dist, i, j in pairs:
+        if i in tookD or j in tookC or dist > 200:
+            continue
+        tookD.add(i); tookC.add(j)
+        out[id(desks[i])] = chairs[j]
+    return out
 
 
 def tune():
@@ -167,6 +193,7 @@ def spots(items, m, t):
     desk or the desk stops hiding his legs.
     """
     out = {"desks": [], "sofa": None, "coffee": None}
+    seat_of = pair_chairs(items)
     for it in items:
         a, x, y = it["asset"], it["x"], it["y"]
         if a == "desk":
@@ -181,9 +208,22 @@ def spots(items, m, t):
             # shrinking the desk shrinks the keyboard with it and moves the
             # keys further away, while a bigger body reaches further down the
             # tabletop. That is what rowScale.r1 is for.
-            sx, sy = t["desk"]["sit"]
-            out["desks"].append({"walk": {"x": x - 96, "y": y + 62},
-                                 "sit": {"x": x + sx, "y": y + sy, "sortY": y - 1}})
+            ch = seat_of.get(id(it))
+            if ch:
+                cx, cy = t.get("chair", {}).get("sit", [0, -4])
+                seat = {"x": ch["x"] + cx, "y": ch["y"] + cy}
+                # stand on the far side of the chair from the desk, which is the
+                # side the chair is pulled out towards
+                wx = ch["x"] - 46 if ch["x"] <= x else ch["x"] + 46
+                walk = {"x": wx, "y": ch["y"] + 34}
+            else:
+                sx, sy = t["desk"]["sit"]
+                seat = {"x": x + sx, "y": y + sy}
+                walk = {"x": x - 96, "y": y + 62}
+            # drawn after its chair and before its desk, so the chair is behind
+            # the body and the desk still hides the legs
+            out["desks"].append({"walk": walk,
+                                 "sit": {"x": seat["x"], "y": seat["y"], "sortY": y - 1}})
         elif a == "sofa" and out["sofa"] is None:
             # the coffee table sits right against the front of the sofa, so the
             # only floor next to it is off its right arm: seat him on the right

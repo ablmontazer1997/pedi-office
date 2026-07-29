@@ -36,7 +36,10 @@
   "width": 153
  },
  "drinking-fountaion": {
-  "edges": null,
+  "edges": [
+   -0.384,
+   0.64
+  ],
   "width": 63
  },
  "frame": {
