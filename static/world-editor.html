@@ -1,0 +1,575 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RADE OFFICE — world editor</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0b0913;color:#e7e0f5;
+  font:13px ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden}
+#wrap{display:flex;height:100%}
+#stage{flex:1;position:relative;overflow:hidden;background:#07060c}
+canvas{display:block;image-rendering:pixelated}
+#side{width:330px;background:#120e1c;border-left:1px solid #2a2140;
+  display:flex;flex-direction:column}
+#modes{display:flex;border-bottom:1px solid #2a2140}
+#modes button{flex:1;background:none;border:0;border-bottom:2px solid transparent;
+  color:#8d80ad;font:inherit;font-size:11px;padding:10px 4px;cursor:pointer;letter-spacing:1px}
+#modes button.on{color:#d9b6ff;border-bottom-color:#b57bff;background:#1a1330}
+.panel{display:none;padding:12px;overflow:auto;flex:1}
+.panel.on{display:block}
+h4{margin:0 0 8px;font-size:11px;color:#8d80ad;letter-spacing:2px;font-weight:400}
+.row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.row label{width:74px;color:#8d80ad;font-size:11px;flex:none}
+input,select,textarea{flex:1;min-width:0;background:#0b0913;border:1px solid #2a2140;
+  color:#e7e0f5;font:inherit;font-size:12px;padding:5px 6px;border-radius:4px}
+input[type=checkbox]{flex:none;width:auto}
+button.act{background:#1d1533;border:1px solid #3a2c5c;color:#d9b6ff;font:inherit;
+  font-size:12px;padding:7px 10px;border-radius:5px;cursor:pointer}
+button.act:hover{background:#271a44}
+button.act.warn{color:#ff9a9a;border-color:#5c2c2c;background:#331515}
+button.act:disabled{opacity:.4;cursor:not-allowed}
+.list{max-height:210px;overflow:auto;border:1px solid #2a2140;border-radius:5px}
+.it{padding:6px 8px;cursor:pointer;border-bottom:1px solid #1c1630;display:flex;
+  gap:8px;align-items:center}
+.it:hover{background:#1a1330}
+.it.on{background:#241a3f;color:#d9b6ff}
+.it .g{color:#6b5f88;font-size:11px;margin-left:auto}
+.hint{color:#6b5f88;font-size:11px;line-height:1.6;margin:8px 0}
+#bar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 12px;
+  background:#120e1cdd;border-top:1px solid #2a2140;align-items:center}
+#msg{color:#8d80ad;font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#msg.ok{color:#8ce7b0}#msg.err{color:#ff9a9a}
+#zoom{position:absolute;top:10px;left:10px;background:#120e1cdd;border:1px solid #2a2140;
+  border-radius:6px;padding:6px 8px;color:#8d80ad;font-size:11px}
+</style></head><body>
+
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="zoom">drag to pan · wheel to zoom · <span id="zv">100%</span></div>
+    <div id="bar">
+      <button class="act" id="bSave">SAVE</button>
+      <button class="act" id="bReload">RELOAD</button>
+      <span id="msg">ready</span>
+    </div>
+  </div>
+
+  <div id="side">
+    <div id="modes">
+      <button data-m="rooms" class="on">ROOMS</button>
+      <button data-m="spots">SPOTS</button>
+      <button data-m="props">PROPS</button>
+      <button data-m="cast">CAST</button>
+    </div>
+
+    <div class="panel on" id="p-rooms">
+      <h4>ROOMS</h4>
+      <div class="list" id="roomList"></div>
+      <div class="hint">Click a room on the canvas or in the list. Rooms are laid
+        out in rows: change a room's row and place to move it.</div>
+      <div class="row"><label>name</label><input id="rNm"></div>
+      <div class="row"><label>فارسی</label><input id="rFa" dir="rtl"></div>
+      <div class="row"><label>door x</label><input id="rDoor" type="number"></div>
+      <div class="row"><label>row</label><input id="rRow" type="number" min="0"></div>
+      <div class="row"><label>place</label><input id="rPos" type="number" min="0"></div>
+      <div class="row"><label>tall col</label><input id="rTall" type="checkbox"></div>
+      <div class="row">
+        <button class="act" id="bApplyRoom">APPLY</button>
+        <button class="act warn" id="bDelRoom">DELETE ROOM</button>
+      </div>
+      <h4 style="margin-top:16px">ADD A ROOM</h4>
+      <div class="row"><label>design</label><select id="newDesign"></select></div>
+      <div class="row"><label>id</label><input id="newId" placeholder="museum"></div>
+      <div class="row"><label>name</label><input id="newNm" placeholder="MUSEUM"></div>
+      <div class="row"><label>فارسی</label><input id="newFa" dir="rtl" placeholder="موزه"></div>
+      <div class="row"><button class="act" id="bAddRoom">ADD</button></div>
+      <div class="hint">The size is read from the artwork, so a new room is exactly
+        as big as its picture. It joins the last row; move it from there.</div>
+    </div>
+
+    <div class="panel" id="p-spots">
+      <h4>SPOTS · <span id="spotRoom">—</span></h4>
+      <div class="hint">Shift-click the floor to add a spot. Drag a spot to move it.</div>
+      <div class="list" id="spotList"></div>
+      <div class="row"><label>label</label><input id="sL" dir="rtl"></div>
+      <div class="row"><label>action</label><select id="sA"></select></div>
+      <div class="row"><label>facing</label><select id="sD">
+        <option value="0">right</option><option value="1">up</option>
+        <option value="2">left</option><option value="3">down</option></select></div>
+      <div class="row"><label>stand on</label><input id="sOn" type="checkbox"></div>
+      <div class="row"><label>prop</label><select id="sP"></select></div>
+      <div class="row"><label>sound</label><select id="sSnd"></select></div>
+      <div class="row"><label>x / y</label><input id="sX" type="number"><input id="sY" type="number"></div>
+      <div class="row">
+        <button class="act" id="bApplySpot">APPLY</button>
+        <button class="act warn" id="bDelSpot">DELETE</button>
+      </div>
+    </div>
+
+    <div class="panel" id="p-props">
+      <h4>ANIMATED PROPS · <span id="propRoom">—</span></h4>
+      <div class="hint">Shift-click the floor to drop the chosen prop. Drag to move.</div>
+      <div class="row"><label>kind</label><select id="pKind"></select></div>
+      <div class="list" id="propList"></div>
+      <div class="row"><label>x / y</label><input id="pX" type="number"><input id="pY" type="number"></div>
+      <div class="row">
+        <button class="act" id="bApplyProp">APPLY</button>
+        <button class="act warn" id="bDelProp">DELETE</button>
+      </div>
+    </div>
+
+    <div class="panel" id="p-cast">
+      <h4>CAST</h4>
+      <div class="hint">Which sprite each bot wears. Slots follow the order the
+        server lists the bots in; the live names are shown when it answers.</div>
+      <div id="castList"></div>
+      <h4 style="margin-top:16px">THE CHIEF</h4>
+      <div class="row"><label>name</label><input id="bossName"></div>
+      <div class="row"><label>room</label><select id="bossRoom"></select></div>
+      <div class="row"><label>x / y</label><input id="bossX" type="number"><input id="bossY" type="number"></div>
+      <h4 style="margin-top:16px">SHEETS IN PLAY</h4>
+      <div class="list" id="sheetList"></div>
+      <div class="row"><label>add</label><select id="sheetAdd"></select>
+        <button class="act" id="bAddSheet">ADD</button></div>
+    </div>
+  </div>
+</div>
+
+<script src="world.js"></script>
+<script>
+const KEY = new URLSearchParams(location.search).get("k") || "";
+const cv = document.getElementById("cv"), g = cv.getContext("2d");
+const $ = (id) => document.getElementById(id);
+
+// The same action and prop tables world.html draws with, so the editor can only
+// offer things the page can actually render.
+const ACTS = ["idle","walk","sleep","sit","phone","punch","gun"];
+const SNDS = ["", "piano","drum","harp","guitar","conga","sing","keys"];
+
+let W = JSON.parse(JSON.stringify(window.WORLD));   // the plan being edited
+let PACK = {designs:[], chars:[], anim:[], props:[]};
+let BOTS = [];
+const IMG = {};
+
+let sel = null;        // selected room id
+let selSpot = -1, selProp = -1;
+let mode = "rooms";
+let cam = {x:0, y:0, s:0.5};
+let drag = null;
+
+/* ---------------------------------------------------------------- the plan */
+// Exactly the arithmetic world.html uses, so what the editor shows is where
+// things will actually be. Rooms sit in rows, bottom aligned, one constant gap.
+const q16 = (n) => Math.ceil(n/16)*16;
+function plan(){
+  const RM = {}; W.rooms.forEach(r => RM[r.id] = r);
+  const PAD = W.pad || 64, GAP = W.gap || 64;
+  let planW = 0;
+  (W.layout || []).forEach(row => {
+    const wide = row.reduce((a,id) => a + (RM[id] ? RM[id].w + GAP : 0), -GAP);
+    planW = Math.max(planW, wide);
+  });
+  let planY = PAD;
+  (W.layout || []).forEach(row => {
+    const rows = row.filter(id => RM[id]);
+    if (!rows.length) return;
+    const rh = Math.max(...rows.map(id => q16(RM[id].h)));
+    let x = PAD;
+    rows.forEach(id => { const r = RM[id]; r.x = x; r.y = planY + rh - q16(r.h); x += r.w + GAP; });
+    planY += rh + GAP;
+  });
+  const tall = RM[W.tall];
+  if (tall){
+    tall.x = PAD + planW + GAP;
+    tall.y = planY - GAP - q16(tall.h);
+  }
+  W._w = (tall ? tall.x + tall.w : PAD + planW) + PAD;
+  W._h = planY - GAP + PAD;
+  return RM;
+}
+
+/* ------------------------------------------------------------------ images */
+function img(url){
+  if (IMG[url]) return Promise.resolve(IMG[url]);
+  return new Promise((res) => {
+    const im = new Image();
+    im.onload = () => { IMG[url] = im; res(im); };
+    im.onerror = () => res(null);
+    im.src = url;
+  });
+}
+function loadRoomArt(){
+  const jobs = [];
+  W.rooms.forEach(r => (r.L || []).forEach(f => jobs.push(img("limezu/rooms/" + f))));
+  (W.chars || []).forEach(c => jobs.push(img("limezu/chars/Premade_Character_32x32_" + c + ".png")));
+  return Promise.all(jobs);
+}
+
+/* ------------------------------------------------------------------- paint */
+function resize(){
+  const st = document.getElementById("stage");
+  cv.width = st.clientWidth; cv.height = st.clientHeight;
+  paint();
+}
+function w2s(x, y){ return {x:(x-cam.x)*cam.s + cv.width/2, y:(y-cam.y)*cam.s + cv.height/2}; }
+function s2w(x, y){ return {x:(x-cv.width/2)/cam.s + cam.x, y:(y-cv.height/2)/cam.s + cam.y}; }
+
+function paint(){
+  const RM = plan();
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = "#07060c"; g.fillRect(0,0,cv.width,cv.height);
+  g.save();
+  g.translate(Math.round(cv.width/2), Math.round(cv.height/2));
+  g.scale(cam.s, cam.s);
+  g.translate(-cam.x, -cam.y);
+
+  W.rooms.forEach(r => {
+    // floor plate under the art, so a room with missing art is still visible
+    g.fillStyle = "#141024";
+    g.fillRect(r.x, r.y, r.w, r.h);
+    (r.L || []).forEach(f => {
+      const im = IMG["limezu/rooms/" + f];
+      if (im) g.drawImage(im, r.x, r.y);
+    });
+    const on = r.id === sel;
+    g.strokeStyle = on ? "#b57bff" : "#33284f";
+    g.lineWidth = on ? 3/cam.s : 1/cam.s;
+    g.strokeRect(r.x, r.y, r.w, r.h);
+    // the doorway, drawn where world.html cuts it
+    g.fillStyle = "#b57bff55";
+    g.fillRect(r.x + (r.door|0) - 16, r.y + r.h - 4, 32, 8);
+    g.fillStyle = on ? "#d9b6ff" : "#7a6ea0";
+    g.font = "16px ui-monospace,monospace";
+    g.fillText(r.nm || r.id, r.x + 6, r.y + 20);
+
+    (r.spots || []).forEach((s, i) => {
+      const hit = on && i === selSpot && mode === "spots";
+      g.fillStyle = hit ? "#ffd166" : "#4be0a0";
+      g.beginPath(); g.arc(r.x+s.x, r.y+s.y, hit ? 7 : 5, 0, 7); g.fill();
+      g.strokeStyle = "#08060f"; g.lineWidth = 2/cam.s; g.stroke();
+    });
+    (r.anim || []).forEach((a, i) => {
+      const hit = on && i === selProp && mode === "props";
+      g.fillStyle = hit ? "#ffd166" : "#7bb6ff";
+      g.fillRect(r.x + a[1] - 5, r.y + a[2] - 5, 10, 10);
+      g.strokeStyle = "#08060f"; g.lineWidth = 2/cam.s; g.strokeRect(r.x+a[1]-5, r.y+a[2]-5, 10, 10);
+    });
+  });
+
+  // the chief, where he stands
+  const b = W.boss, br = RM[b && b.room];
+  if (br){
+    g.fillStyle = "#ff9a3c";
+    g.beginPath(); g.arc(br.x + b.x, br.y + b.y, 6, 0, 7); g.fill();
+  }
+  g.restore();
+  $("zv").textContent = Math.round(cam.s*100) + "%";
+}
+
+/* ------------------------------------------------------------------- panels */
+function fillRooms(){
+  $("roomList").innerHTML = W.rooms.map(r =>
+    `<div class="it${r.id===sel?" on":""}" data-r="${r.id}">${r.nm||r.id}
+      <span class="g">${r.w}×${r.h} · ${(r.spots||[]).length} spots</span></div>`).join("");
+  [...$("roomList").children].forEach(el => el.onclick = () => select(el.dataset.r));
+  const rsel = $("bossRoom");
+  rsel.innerHTML = W.rooms.map(r => `<option value="${r.id}">${r.nm||r.id}</option>`).join("");
+  rsel.value = (W.boss||{}).room || "";
+}
+function rowOf(id){
+  const L = W.layout || [];
+  for (let i=0;i<L.length;i++){ const j = L[i].indexOf(id); if (j>=0) return [i,j]; }
+  return [-1,-1];
+}
+function fillRoomForm(){
+  const r = W.rooms.find(x => x.id === sel);
+  if (!r) return;
+  const [ri, rj] = rowOf(r.id);
+  $("rNm").value = r.nm || ""; $("rFa").value = r.fa || "";
+  $("rDoor").value = r.door || 0;
+  $("rRow").value = ri; $("rPos").value = rj;
+  $("rTall").checked = W.tall === r.id;
+}
+function fillSpots(){
+  const r = W.rooms.find(x => x.id === sel);
+  $("spotRoom").textContent = r ? (r.nm || r.id) : "—";
+  $("propRoom").textContent = r ? (r.nm || r.id) : "—";
+  $("spotList").innerHTML = !r ? "" : (r.spots||[]).map((s,i) =>
+    `<div class="it${i===selSpot?" on":""}" data-i="${i}">${s.l||"(no label)"}
+      <span class="g">${s.a} · ${s.x},${s.y}</span></div>`).join("");
+  [...$("spotList").children].forEach(el => el.onclick = () => {
+    selSpot = +el.dataset.i; fillSpotForm(); fillSpots(); paint();
+  });
+  $("propList").innerHTML = !r ? "" : (r.anim||[]).map((a,i) =>
+    `<div class="it${i===selProp?" on":""}" data-i="${i}">${a[0]}
+      <span class="g">${a[1]},${a[2]}</span></div>`).join("");
+  [...$("propList").children].forEach(el => el.onclick = () => {
+    selProp = +el.dataset.i; fillPropForm(); fillSpots(); paint();
+  });
+}
+function fillSpotForm(){
+  const r = W.rooms.find(x => x.id === sel); if (!r) return;
+  const s = (r.spots||[])[selSpot]; if (!s) return;
+  $("sL").value = s.l || ""; $("sA").value = s.a || "idle";
+  $("sD").value = String(s.d == null ? 1 : s.d);
+  $("sOn").checked = !!s.on; $("sP").value = s.p || ""; $("sSnd").value = s.snd || "";
+  $("sX").value = s.x; $("sY").value = s.y;
+}
+function fillPropForm(){
+  const r = W.rooms.find(x => x.id === sel); if (!r) return;
+  const a = (r.anim||[])[selProp]; if (!a) return;
+  $("pKind").value = a[0]; $("pX").value = a[1]; $("pY").value = a[2];
+}
+function fillCast(){
+  const n = Math.max(6, BOTS.length);
+  const opts = (W.chars||[]).map(c => `<option value="${c}">${c}</option>`).join("");
+  let html = "";
+  for (let i=0;i<n;i++){
+    const nm = (BOTS[i] && (BOTS[i].name || BOTS[i].id)) || ("slot " + (i+1));
+    html += `<div class="row"><label>${nm}</label>
+      <select data-slot="${i}"><option value="">auto</option>${opts}</select></div>`;
+  }
+  $("castList").innerHTML = html;
+  [...$("castList").querySelectorAll("select")].forEach(sl => {
+    const i = +sl.dataset.slot;
+    sl.value = (W.cast||[])[i] || "";
+    sl.onchange = () => {
+      W.cast = W.cast || [];
+      while (W.cast.length <= i) W.cast.push(null);
+      W.cast[i] = sl.value || null;
+    };
+  });
+  $("sheetList").innerHTML = (W.chars||[]).map((c,i) =>
+    `<div class="it">Premade_Character_32x32_${c}.png
+      <span class="g" data-drop="${i}" style="cursor:pointer;color:#ff9a9a">remove</span></div>`).join("");
+  [...$("sheetList").querySelectorAll("[data-drop]")].forEach(el => el.onclick = () => {
+    const i = +el.dataset.drop;
+    if (W.chars.length <= 1) return say("a world needs at least one sheet", true);
+    W.chars.splice(i,1); fillCast();
+  });
+  const free = (PACK.chars||[])
+    .map(f => (f.match(/_(\d+)\.png$/) || [])[1])
+    .filter(c => c && !(W.chars||[]).includes(c));
+  $("sheetAdd").innerHTML = free.map(c => `<option value="${c}">${c}</option>`).join("")
+    || '<option value="">— all in play —</option>';
+}
+function select(id){
+  sel = id; selSpot = -1; selProp = -1;
+  fillRooms(); fillRoomForm(); fillSpots(); paint();
+}
+
+/* ------------------------------------------------------------------ canvas */
+cv.addEventListener("mousedown", (e) => {
+  const p = s2w(e.offsetX, e.offsetY);
+  const RM = plan();
+  const hitRoom = W.rooms.find(r => p.x>=r.x && p.x<r.x+r.w && p.y>=r.y && p.y<r.y+r.h);
+
+  if (e.shiftKey && hitRoom && (mode === "spots" || mode === "props")){
+    sel = hitRoom.id;
+    const lx = Math.round(p.x - hitRoom.x), ly = Math.round(p.y - hitRoom.y);
+    if (mode === "spots"){
+      hitRoom.spots = hitRoom.spots || [];
+      hitRoom.spots.push({x:lx, y:ly, a:"idle", d:1, l:"new spot"});
+      selSpot = hitRoom.spots.length - 1;
+      fillSpotForm();
+    } else {
+      hitRoom.anim = hitRoom.anim || [];
+      hitRoom.anim.push([$("pKind").value || "sprout", lx, ly]);
+      selProp = hitRoom.anim.length - 1;
+      fillPropForm();
+    }
+    fillRooms(); fillSpots(); paint();
+    return;
+  }
+
+  // grab a marker inside the selected room before panning
+  const r = W.rooms.find(x => x.id === sel);
+  if (r && mode === "spots"){
+    const i = (r.spots||[]).findIndex(s => Math.hypot(r.x+s.x-p.x, r.y+s.y-p.y) < 9/cam.s + 6);
+    if (i >= 0){ selSpot = i; drag = {kind:"spot", i}; fillSpotForm(); fillSpots(); paint(); return; }
+  }
+  if (r && mode === "props"){
+    const i = (r.anim||[]).findIndex(a => Math.abs(r.x+a[1]-p.x) < 8 && Math.abs(r.y+a[2]-p.y) < 8);
+    if (i >= 0){ selProp = i; drag = {kind:"prop", i}; fillPropForm(); fillSpots(); paint(); return; }
+  }
+  if (hitRoom && hitRoom.id !== sel){ select(hitRoom.id); return; }
+  drag = {kind:"pan", x:e.offsetX, y:e.offsetY, cx:cam.x, cy:cam.y};
+});
+cv.addEventListener("mousemove", (e) => {
+  if (!drag) return;
+  const p = s2w(e.offsetX, e.offsetY);
+  const r = W.rooms.find(x => x.id === sel);
+  if (drag.kind === "pan"){
+    cam.x = drag.cx - (e.offsetX-drag.x)/cam.s;
+    cam.y = drag.cy - (e.offsetY-drag.y)/cam.s;
+  } else if (drag.kind === "spot" && r){
+    const s = r.spots[drag.i];
+    s.x = Math.round(p.x - r.x); s.y = Math.round(p.y - r.y);
+    fillSpotForm();
+  } else if (drag.kind === "prop" && r){
+    const a = r.anim[drag.i];
+    a[1] = Math.round(p.x - r.x); a[2] = Math.round(p.y - r.y);
+    fillPropForm();
+  }
+  paint();
+});
+addEventListener("mouseup", () => { if (drag && drag.kind !== "pan") fillSpots(); drag = null; });
+cv.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  cam.s = Math.max(0.15, Math.min(3, cam.s * (e.deltaY < 0 ? 1.12 : 1/1.12)));
+  paint();
+}, {passive:false});
+
+/* ------------------------------------------------------------------- forms */
+$("bApplyRoom").onclick = () => {
+  const r = W.rooms.find(x => x.id === sel); if (!r) return say("pick a room first", true);
+  r.nm = $("rNm").value; r.fa = $("rFa").value; r.door = +$("rDoor").value || 0;
+  // move it in the plan
+  const [ri, rj] = rowOf(r.id);
+  if (ri >= 0) W.layout[ri].splice(rj, 1);
+  const want = Math.max(0, +$("rRow").value || 0);
+  while (W.layout.length <= want) W.layout.push([]);
+  const at = Math.max(0, Math.min(W.layout[want].length, +$("rPos").value || 0));
+  W.layout[want].splice(at, 0, r.id);
+  W.layout = W.layout.filter(row => row.length);
+  if ($("rTall").checked){
+    // the tall column belongs to no row
+    const [ti, tj] = rowOf(r.id);
+    if (ti >= 0) W.layout[ti].splice(tj, 1);
+    W.layout = W.layout.filter(row => row.length);
+    W.tall = r.id;
+  } else if (W.tall === r.id){
+    W.tall = null;
+  }
+  fillRooms(); fillRoomForm(); paint(); say("moved · not saved yet");
+};
+$("bDelRoom").onclick = () => {
+  const r = W.rooms.find(x => x.id === sel); if (!r) return;
+  if (!confirm("Delete " + (r.nm||r.id) + "?")) return;
+  W.rooms = W.rooms.filter(x => x.id !== r.id);
+  W.layout = W.layout.map(row => row.filter(id => id !== r.id)).filter(row => row.length);
+  if (W.tall === r.id) W.tall = null;
+  if ((W.boss||{}).room === r.id && W.rooms.length) W.boss.room = W.rooms[0].id;
+  sel = null; fillRooms(); fillSpots(); paint(); say("removed · not saved yet");
+};
+$("bAddRoom").onclick = async () => {
+  const d = PACK.designs.find(x => x.name === $("newDesign").value);
+  const id = ($("newId").value || "").trim();
+  if (!d) return say("pick a design", true);
+  if (!/^[a-z0-9_]+$/.test(id)) return say("id: lowercase letters, digits, _", true);
+  if (W.rooms.some(r => r.id === id)) return say("that id is taken", true);
+  // the size is the artwork's size — no guessing, no room bigger than its picture
+  const im = await img("limezu/rooms/" + d.layers[0]);
+  if (!im) return say("could not read the artwork", true);
+  const r = {id, nm: ($("newNm").value || id.toUpperCase()), fa: $("newFa").value || "",
+             w: im.width, h: im.height, door: Math.round(im.width/2),
+             L: d.layers, anim: [], spots: []};
+  W.rooms.push(r);
+  if (!W.layout.length) W.layout.push([]);
+  W.layout[W.layout.length-1].push(id);
+  await loadRoomArt();
+  select(id);
+  say("added " + id + " · " + im.width + "×" + im.height + " · not saved yet");
+};
+$("bApplySpot").onclick = () => {
+  const r = W.rooms.find(x => x.id === sel); if (!r) return;
+  const s = (r.spots||[])[selSpot]; if (!s) return say("pick a spot", true);
+  s.l = $("sL").value; s.a = $("sA").value; s.d = +$("sD").value;
+  s.x = +$("sX").value; s.y = +$("sY").value;
+  if ($("sOn").checked) s.on = true; else delete s.on;
+  if ($("sP").value) s.p = $("sP").value; else delete s.p;
+  if ($("sSnd").value) s.snd = $("sSnd").value; else delete s.snd;
+  fillSpots(); paint(); say("spot updated · not saved yet");
+};
+$("bDelSpot").onclick = () => {
+  const r = W.rooms.find(x => x.id === sel); if (!r || selSpot < 0) return;
+  r.spots.splice(selSpot,1); selSpot = -1; fillSpots(); paint(); say("spot removed · not saved yet");
+};
+$("bApplyProp").onclick = () => {
+  const r = W.rooms.find(x => x.id === sel); if (!r) return;
+  const a = (r.anim||[])[selProp]; if (!a) return say("pick a prop", true);
+  a[0] = $("pKind").value; a[1] = +$("pX").value; a[2] = +$("pY").value;
+  fillSpots(); paint(); say("prop updated · not saved yet");
+};
+$("bDelProp").onclick = () => {
+  const r = W.rooms.find(x => x.id === sel); if (!r || selProp < 0) return;
+  r.anim.splice(selProp,1); selProp = -1; fillSpots(); paint(); say("prop removed · not saved yet");
+};
+$("bAddSheet").onclick = () => {
+  const v = $("sheetAdd").value; if (!v) return;
+  W.chars = W.chars || []; W.chars.push(v);
+  loadRoomArt().then(fillCast);
+  say("sheet " + v + " added · not saved yet");
+};
+["bossName","bossRoom","bossX","bossY"].forEach(id => $(id).onchange = () => {
+  W.boss = W.boss || {};
+  W.boss.name = $("bossName").value;
+  W.boss.room = $("bossRoom").value;
+  W.boss.x = +$("bossX").value; W.boss.y = +$("bossY").value;
+  paint();
+});
+
+document.querySelectorAll("#modes button").forEach(b => b.onclick = () => {
+  mode = b.dataset.m;
+  document.querySelectorAll("#modes button").forEach(x => x.classList.toggle("on", x===b));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("on", p.id === "p-"+mode));
+  paint();
+});
+
+/* -------------------------------------------------------------------- save */
+function say(t, bad){
+  const m = $("msg");
+  m.textContent = t;
+  m.className = bad ? "err" : (bad === false ? "ok" : "");
+}
+$("bSave").onclick = async () => {
+  $("bSave").disabled = true;
+  try {
+    const body = JSON.parse(JSON.stringify(W));
+    delete body._w; delete body._h;
+    body.rooms.forEach(r => { delete r.x; delete r.y; });   // x/y are computed, never stored
+    const r = await fetch("api/world", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({key: KEY, world: body}),
+    });
+    const j = await r.json();
+    say(j.ok ? "saved · " + j.msg : "save failed · " + j.msg, !j.ok);
+  } catch (e) {
+    say("save failed · " + e.message, true);
+  }
+  $("bSave").disabled = false;
+};
+$("bReload").onclick = () => location.reload();
+
+/* -------------------------------------------------------------------- boot */
+(async function boot(){
+  $("sA").innerHTML = ACTS.map(a => `<option>${a}</option>`).join("");
+  $("sSnd").innerHTML = SNDS.map(s => `<option value="${s}">${s||"—"}</option>`).join("");
+  try {
+    PACK = await (await fetch("api/limezu" + (KEY ? "?k="+encodeURIComponent(KEY) : ""))).json();
+  } catch (e) { say("could not list the art pack", true); }
+  $("newDesign").innerHTML = (PACK.designs||[])
+    .map(d => `<option value="${d.name}">${d.name} (${d.layers.length})</option>`).join("");
+  $("pKind").innerHTML = ["server","tapis","coffee","cat","sprout","clock","seccam"]
+    .map(k => `<option>${k}</option>`).join("");
+  $("sP").innerHTML = ['<option value="">—</option>']
+    .concat((PACK.props||[]).map(f => { const n = f.replace(".png",""); return `<option>${n}</option>`; }))
+    .join("");
+  try {
+    const st = await (await fetch("api/status" + (KEY ? "?k="+encodeURIComponent(KEY) : ""))).json();
+    BOTS = st.bots || [];
+  } catch (e) {}
+  $("bossName").value = (W.boss||{}).name || "";
+  $("bossX").value = (W.boss||{}).x || 0;
+  $("bossY").value = (W.boss||{}).y || 0;
+  await loadRoomArt();
+  plan();
+  cam = {x: W._w/2, y: W._h/2, s: Math.min(1, Math.min(cv.width/W._w, cv.height/W._h) || 0.4)};
+  fillRooms(); fillSpots(); fillCast();
+  $("bossRoom").value = (W.boss||{}).room || "";
+  resize();
+})();
+addEventListener("resize", resize);
+resize();
+</script>
+</body></html>

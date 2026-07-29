@@ -84,6 +84,9 @@ button:disabled{opacity:.45;cursor:not-allowed}
 
 <canvas id="cv"></canvas>
 
+<!-- the plan of the world, written by the editor -->
+<script src="world.js"></script>
+
 <div class="ui panel" id="top">
   <span><b>RADE</b> OFFICE</span>
   <span>BOTS <span class="v" id="tBots">–</span></span>
@@ -160,129 +163,19 @@ const ANIM = {
 const DOOR = {w:32, h:64, n:5};
 
 /* -------------------------------------------------------------- the plan */
-const PAD = 64;
-const ROOMS = [
-{ id:"office", nm:"CONTROL ROOM", fa:"اتاق فرمان", w:640, h:448, x:64, y:64, door:320,
-  L:["Control_Room_layer_1.png","Control_Room_layer_2.png"],
-  anim:[["server",596,300]],
-  spots:[{x:200,y:330,a:"idle",d:1,l:"نگاه به مانیتورها"},
-         {x:430,y:330,a:"phone",d:3,l:"چک کردن گوشی"}] },
-
-{ id:"gym", nm:"GYM", fa:"باشگاه", w:608, h:480, x:768, y:64, door:330,
-  L:["Gym_layer_1_32x32.png","Gym_layer_2_32x32.png"],
-  anim:[["tapis",352,182],["tapis",360,282]],
-  spots:[{x:482,y:140,a:"punch",d:1,l:"کیسه بوکس"},
-         {x:498,y:140,a:"punch",d:1,l:"کیسه بوکس"},
-         {x:503,y:164,a:"punch",d:1,l:"کیسه بوکس"},
-         {x:330,y:230,a:"idle",d:3,l:"دمبل سبک",p:"dumbbell"},
-         {x:384,y:250,a:"walk",d:1,l:"دویدن روی تردمیل",on:true,run:true},
-         {x:392,y:350,a:"walk",d:1,l:"دویدن روی تردمیل",on:true,run:true}] },
-
-{ id:"music", nm:"MUSIC ROOM", fa:"اتاق موسیقی", w:640, h:448, x:0, y:0, door:320,
-  L:["Music_Room_layer_1.png","Music_Room_layer_2.png"],
-  anim:[["sprout",600,300]],
-  spots:[{x:113,y:300,a:"idle",d:1,l:"پیانو زدن",snd:"piano"},
-         {x:225,y:132,a:"idle",d:1,l:"پیانو زدن",snd:"piano"},
-         {x:295,y:132,a:"idle",d:1,l:"پیانو زدن",snd:"piano"},
-         {x:428,y:132,a:"idle",d:1,l:"درام زدن",snd:"drum"},
-         {x:520,y:132,a:"idle",d:1,l:"درام زدن",snd:"drum"},
-         {x:322,y:290,a:"idle",d:1,l:"چنگ زدن",snd:"harp"},
-         {x:433,y:284,a:"idle",d:1,l:"گیتار زدن",snd:"guitar"},
-         {x:503,y:284,a:"idle",d:1,l:"گیتار باس",snd:"guitar"},
-         {x:170,y:392,a:"idle",d:1,l:"تنبک زدن",snd:"conga"},
-         {x:350,y:390,a:"idle",d:1,l:"پای میکروفن",snd:"sing"},
-         {x:469,y:400,a:"idle",d:1,l:"کیبورد زدن",snd:"keys"},
-         {x:533,y:400,a:"idle",d:1,l:"کیبورد زدن",snd:"keys"}] },
-
-{ id:"studio", nm:"TV STUDIO", fa:"استودیو", w:352, h:320, x:64, y:672, door:176,
-  L:["Tv_Studio_Design_layer_1_32x32.png","Tv_Studio_Design_layer_2_32x32.png",
-     "Tv_Studio_Design_layer_3_32x32.png"],
-  anim:[],
-  spots:[{x:131,y:164,a:"idle",d:1,l:"پشت میز پخش"},
-         {x:228,y:100,a:"idle",d:1,l:"پشت میز پخش"},
-         {x:112,y:216,a:"sit",d:1,l:"روی صندلی مهمان",on:true},
-         {x:175,y:216,a:"sit",d:1,l:"روی صندلی مهمان",on:true},
-         {x:80,y:262,a:"idle",d:1,l:"پشت دوربین"}] },
-
-{ id:"cafe", nm:"ICE CREAM SHOP", fa:"بستنی فروشی", w:384, h:320, x:480, y:672, door:192,
-  L:["Ice_Cream_Shop_Design_layer_1_32x32.png","Ice_Cream_Shop_Design_layer_2_32x32.png",
-     "Ice_Cream_Shop_Design_layer_3_32x32.png"],
-  anim:[["coffee",44,172],["coffee",324,172]],
-  spots:[{x:52,y:214,a:"sit",d:0,l:"بستنی خوردن",on:true,p:"icecream"},
-         {x:110,y:214,a:"sit",d:1,l:"بستنی خوردن",on:true,p:"icecream"},
-         {x:274,y:214,a:"sit",d:0,l:"بستنی خوردن",on:true,p:"icecream"},
-         {x:350,y:258,a:"idle",d:1,l:"بستنی خوردن",p:"icecream"},
-         {x:160,y:176,a:"idle",d:1,l:"سفارش دادن"},
-         {x:206,y:176,a:"idle",d:1,l:"صف صندوق"}] },
-
-{ id:"home", nm:"LOUNGE", fa:"لانژ", w:448, h:428, x:928, y:672, door:200,
-  L:["Generic_Home_1_Layer_1_32x32.png","Generic_Home_1_Layer_2_32x32.png"],
-  anim:[["cat",188,170],["sprout",64,208]],
-  spots:[{x:120,y:196,a:"sit",d:0,l:"نشستن کنار میز",on:true},
-         {x:186,y:196,a:"sit",d:1,l:"نشستن کنار میز",on:true},
-         {x:236,y:150,a:"phone",d:3,l:"وقت تلف کردن"},
-         {x:96,y:130,a:"idle",d:1,l:"آشپزخانه"},
-         {x:290,y:190,a:"sleep",d:0,l:"چرت",on:true}] },
-
-{ id:"jp", nm:"JAPANESE HOUSE", fa:"خانه ژاپنی", w:608, h:428, x:1440, y:672, door:176,
-  L:["Japanese_Home_1_Layer_1_32x32.png","Japanese_Home_1_Layer_2_32x32.png"],
-  anim:[["sprout",154,224],["cat",320,268]],
-  spots:[{x:96,y:250,a:"sit",d:0,l:"چای ژاپنی",on:true},
-         {x:150,y:250,a:"sit",d:1,l:"چای ژاپنی",on:true},
-         {x:216,y:194,a:"idle",d:1,l:"تماشای حیاط"},
-         {x:400,y:262,a:"phone",d:3,l:"مطالعه"},
-         {x:470,y:180,a:"sleep",d:0,l:"استراحت",on:true}] },
-
-{ id:"range", nm:"SHOOTING RANGE", fa:"سالن تیراندازی", w:320, h:332, x:64, y:1168, door:150,
-  L:["Shooting_Range_Design_layer_1_32x32.png","Shooting_Range_Design_layer_2_32x32.png"],
-  anim:[["seccam",44,28]],
-  spots:[{x:72,y:212,a:"gun",d:1,l:"تمرین نشانه‌گیری"},
-         {x:118,y:212,a:"gun",d:1,l:"تمرین نشانه‌گیری"},
-         {x:164,y:212,a:"gun",d:1,l:"تمرین نشانه‌گیری"},
-         {x:210,y:250,a:"idle",d:1,l:"انتظار نوبت"}] },
-
-{ id:"lobby", nm:"LOBBY", fa:"لابی", w:448, h:352, x:448, y:1168, door:224,
-  L:["Condominium_Design_layer_1_32x32.png","Condominium_Design_layer_2_32x32.png"],
-  anim:[["clock",64,160],["sprout",380,180]],
-  spots:[{x:186,y:186,a:"idle",d:1,l:"خواندن تابلو اعلانات"},
-         {x:120,y:262,a:"phone",d:3,l:"منتظر آسانسور"},
-         {x:320,y:262,a:"idle",d:3,l:"قدم زدن"}] },
-
-{ id:"game", nm:"GAME ROOM", fa:"اتاق بازی", w:512, h:608, x:0, y:0, door:240,
-  L:["Game_Room_layer_1.png","Game_Room_layer_2.png"],
-  anim:[["seccam",470,20]],
-  spots:[{x:66,y:142,a:"idle",d:1,l:"بازی آرکید"},
-         {x:138,y:142,a:"idle",d:1,l:"بازی آرکید"},
-         {x:210,y:142,a:"idle",d:1,l:"رکورد زدن"},
-         {x:352,y:216,a:"idle",d:1,l:"تماشای تلویزیون",on:true},
-         {x:416,y:216,a:"idle",d:1,l:"تماشای تلویزیون",on:true},
-         {x:67,y:334,a:"idle",d:1,l:"پای بار",on:true},
-         {x:117,y:334,a:"idle",d:1,l:"پای بار",on:true},
-         {x:167,y:334,a:"idle",d:1,l:"پای بار",on:true},
-         {x:88,y:486,a:"idle",d:1,l:"بیلیارد"},
-         {x:228,y:486,a:"idle",d:1,l:"بیلیارد"},
-         {x:368,y:486,a:"idle",d:1,l:"بیلیارد"}] },
-
-{ id:"hall", nm:"CORRIDOR", fa:"راهرو", w:448, h:192, x:960, y:1168, door:224,
-  L:["Condominium_Design_2_layer_1_32x32.png","Condominium_Design_2_layer_2_32x32.png"],
-  anim:[["cat",196,120]],
-  spots:[{x:100,y:140,a:"idle",d:1,l:"در زدن"},
-         {x:300,y:140,a:"phone",d:3,l:"چک کردن پیام"}] },
-
-];
+const PAD = WORLD.pad || 64;
+const ROOMS = WORLD.rooms;
 const RM = {}; ROOMS.forEach(r => RM[r.id] = r);
 const OFFICE = RM.office;
 // the chief: his own desk at the head of the room, tied to no session
-const BOSS = {room:"studio", x:134, y:142, name:"Ali Akbar"};
+const BOSS = WORLD.boss;
 
 // The plan is computed, not typed in. Rooms sit in rows, bottom aligned so every
 // door opens onto the same corridor, with one constant 64px gap everywhere. What
 // a short room leaves over becomes a solid block, so the corridor never widens
 // into a dead cove.
-const GAP = 64;
-const LAYOUT = [["office","gym","music"],
-                ["studio","cafe","home","jp"],
-                ["range","lobby","hall"]];
+const GAP = WORLD.gap || 64;
+const LAYOUT = WORLD.layout;
 const FILL = [];
 const q16 = n => Math.ceil(n/16)*16;
 let planW = 0;
@@ -299,12 +192,12 @@ LAYOUT.forEach(row => {
   planY += rh + GAP;
 });
 // the game room does not belong to any row, so it gets its own column on the right
-const TALL = RM.game;
+const TALL = RM[WORLD.tall];
 TALL.x = PAD + planW + GAP;
 TALL.y = planY - GAP - q16(TALL.h);
 const WORLD_W = TALL.x + TALL.w + PAD, WORLD_H = planY - GAP + PAD;
 // six bots plus the chief, who is his own man and belongs to no session
-const CH_FILES = ["01","04","06","09","12","15","18"];
+const CH_FILES = WORLD.chars;
 
 /* ------------------------------------------------------------ preloading */
 let pending = 1, ready = false, WD = null;
@@ -467,8 +360,16 @@ function drawAnim(key, wx, wy, t){
   const f = Math.floor(t*a.fps) % a.n;
   g.drawImage(im, f*a.w, 0, a.w, a.h, wx, wy, a.w, a.h);
 }
+// Which sprite sheet a slot wears. `cast` lets the editor pin a character to a
+// bot slot by name; anything unpinned falls back to the old round-robin, so a
+// world.js written before casting existed still draws everyone.
+function chSlot(n){
+  const pick = (WORLD.cast || [])[n];
+  const i = pick != null ? CH_FILES.indexOf(String(pick)) : -1;
+  return i >= 0 ? i : n % CH_FILES.length;
+}
 function drawChar(n, x, y, act, dir, t, seed){
-  const im = IMG["ch"+(n%CH_FILES.length)]; if (!im) return;
+  const im = IMG["ch"+chSlot(n)]; if (!im) return;
   const A = ACT[act] || ACT.idle;
   let d = dir;
   if (A.dirs === 1) d = 0;
@@ -709,7 +610,7 @@ window.addEventListener("resize", resize);
 
 function boot(){
   buildGrid();
-  STATIONS = (WD && WD._stations) ||
+  STATIONS = WORLD.stations || (WD && WD._stations) ||
              [[112,236],[320,236],[528,236],[112,404],[320,404],[528,404]];
   for (let i=0;i<6;i++){
     const s = STATIONS[i];
@@ -955,7 +856,7 @@ function fillCard(i){
     (b && b.pane && b.pane.length) ? b.pane.join("\n") : "— بدون خروجی —";
   pg.imageSmoothingEnabled = false;
   pg.clearRect(0,0,32,64);
-  const im = IMG["ch"+(i%6)];
+  const im = IMG["ch"+chSlot(i)];
   if (im) pg.drawImage(im, 18*32, 64, 32, 64, 0, 0, 32, 64);
   const dis = VIEW || !b;
   document.getElementById("bRestart").disabled = dis;

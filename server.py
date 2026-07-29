@@ -281,7 +281,7 @@ def act(bot_id, action):
 
 
 # what a visitor without the token may load: the world page and its art only
-PUBLIC_PAGES = {"world.html", "room.html", "live.html"}
+PUBLIC_PAGES = {"world.html", "world.js", "room.html", "live.html"}
 PUBLIC_DIRS = {"limezu", "font", "office"}
 
 
@@ -307,6 +307,10 @@ def public_status():
 LAYOUT_FILE = os.path.join(HERE, "layout.json")
 SEATS_FILE = os.path.join(HERE, "seats.json")
 WALK_FILE = os.path.join(HERE, "walk.json")
+# The top-down world's plan. Kept as a one-line JS assignment rather than JSON so
+# world.html can read it with a plain <script> tag and stay synchronous — every
+# size in that page is computed from the plan at module load.
+WORLD_FILE = os.path.join(STATIC, "world.js")
 
 
 def rebake():
@@ -430,8 +434,141 @@ def ed_walk(req):
     return {"ok": True, "msg": "%d shut · %d open" % (len(keep["block"]), len(keep["open"]))}
 
 
+def room_mask(files, cell=16):
+    """Work out where a room's floor is, straight from its artwork.
+
+    A room added in the editor has no walk mask, and a room with no mask is one
+    nobody can enter: the page reads a missing mask as solid. So the mask is
+    derived the same way build_world.py derives the others -- the tile that
+    repeats across the room is the floor, anything drawn on an upper layer is
+    furniture -- and only for rooms that do not have one yet.
+    """
+    from PIL import Image
+    d = os.path.join(STATIC, "limezu", "rooms")
+    ims = [Image.open(os.path.join(d, f)).convert("RGBA") for f in files]
+    base, above = ims[0], [im.load() for im in ims[1:]]
+    W, H = base.size
+    bpx = base.load()
+
+    counts, keys = {}, {}
+    for ty in range(H // 32):
+        for tx in range(W // 32):
+            k = base.crop((tx * 32, ty * 32, tx * 32 + 32, ty * 32 + 32)).tobytes()
+            keys[(tx, ty)] = k
+            counts[k] = counts.get(k, 0) + 1
+    floor = {k for k, n in counts.items() if n >= 4}
+    # The pack's floors repeat every three tiles, so a tile the vote rejected can
+    # still be bare floor: compare it against the floor tile of its own phase.
+    phase = {}
+    for (tx, ty), k in keys.items():
+        if k in floor:
+            phase.setdefault((tx % 3, ty % 3), {})
+            phase[(tx % 3, ty % 3)][k] = phase[(tx % 3, ty % 3)].get(k, 0) + 1
+    phase_tile = {ph: Image.frombytes("RGBA", (32, 32),
+                                      max(d2.items(), key=lambda kv: kv[1])[0]).load()
+                  for ph, d2 in phase.items()}
+
+    rows = []
+    for gy in range(H // cell):
+        row = []
+        for gx in range(W // cell):
+            x0, y0 = gx * cell, gy * cell
+            ok = keys.get((x0 // 32, y0 // 32)) in floor
+            if not ok:
+                ref = phase_tile.get(((x0 // 32) % 3, (y0 // 32) % 3))
+                if ref is not None:
+                    ok = all(bpx[x, y] == ref[x % 32, y % 32]
+                             for y in range(y0, y0 + cell)
+                             for x in range(x0, x0 + cell))
+            if ok:
+                for px in above:
+                    if any(px[x, y][3] > 0
+                           for y in range(y0, y0 + cell, 2)
+                           for x in range(x0, x0 + cell, 2)):
+                        ok = False
+                        break
+            row.append("1" if ok else "0")
+        rows.append("".join(row))
+    return {"w": W, "h": H, "cell": cell, "mask": rows}
+
+
+def fill_masks(world):
+    """Give every room a walk mask, adding only the ones that are missing."""
+    path = os.path.join(STATIC, "limezu", "world_data.json")
+    try:
+        with open(path) as f:
+            wd = json.load(f)
+    except Exception:
+        wd = {}
+    added = []
+    for r in world.get("rooms", []):
+        rid, files = r.get("id"), r.get("L") or []
+        if rid in wd or not files:
+            continue
+        try:
+            wd[rid] = room_mask(files)
+            added.append(rid)
+        except Exception as e:
+            log("system", "mask for %s failed: %s" % (rid, e), "warn")
+    if added:
+        with open(path, "w") as f:
+            json.dump(wd, f, separators=(",", ":"))
+    return added
+
+
+def ed_world(req):
+    """Save the plan of the top-down world: rooms, their spots and props, the
+    row layout, the cast, the chief's desk."""
+    w = req.get("world")
+    if not isinstance(w, dict) or not isinstance(w.get("rooms"), list):
+        return {"ok": False, "msg": "no world in body"}
+    ids = [r.get("id") for r in w["rooms"]]
+    if len(set(ids)) != len(ids) or not all(ids):
+        return {"ok": False, "msg": "room ids must exist and be unique"}
+    # Every id named by the layout has to be a room, or the page divides by a
+    # room that is not there and the whole world fails to draw.
+    known = set(ids)
+    for row in w.get("layout", []):
+        for rid in row:
+            if rid not in known:
+                return {"ok": False, "msg": "layout names a missing room: %s" % rid}
+    if w.get("tall") and w["tall"] not in known:
+        return {"ok": False, "msg": "tall names a missing room: %s" % w["tall"]}
+    body = ("// The plan of the world. Edited by world-editor.html, read by world.html.\n"
+            "// One file, so the page and the editor can never disagree about what exists.\n"
+            "window.WORLD = %s;\n" % json.dumps(w, ensure_ascii=False, indent=1))
+    with open(WORLD_FILE, "w") as f:
+        f.write(body)
+    added = fill_masks(w)
+    return {"ok": True, "msg": "%d rooms · %d spots%s"
+            % (len(w["rooms"]), sum(len(r.get("spots") or []) for r in w["rooms"]),
+               (" · walk mask for " + ", ".join(added)) if added else "")}
+
+
+def limezu_pack():
+    """What art the pack actually has on disk, so the editor offers real files
+    instead of a list someone has to keep in step by hand."""
+    def ls(sub, ext=".png"):
+        d = os.path.join(STATIC, "limezu", sub)
+        try:
+            return sorted(f for f in os.listdir(d) if f.lower().endswith(ext))
+        except OSError:
+            return []
+    rooms = ls("rooms")
+    # A room design is a set of layer files sharing a name: "Gym_layer_1_32x32.png",
+    # "Gym_layer_2_32x32.png". Group them so the editor offers designs, not files.
+    designs = {}
+    for f in rooms:
+        base = re.sub(r"[_-]?layer[_-]?\d+", "", f, flags=re.I)
+        base = re.sub(r"_?32x32", "", base, flags=re.I).replace(".png", "").strip("_")
+        designs.setdefault(base, []).append(f)
+    return {"designs": [{"name": k, "layers": v} for k, v in sorted(designs.items())],
+            "chars": ls("chars"), "anim": ls("anim"), "props": ls("props")}
+
+
 EDIT_POST = {"layout": ed_layout, "asset": ed_asset, "asset-size": ed_size,
-             "asset-fit": ed_fit, "bake": ed_bake, "seats": ed_seats, "walk": ed_walk}
+             "asset-fit": ed_fit, "bake": ed_bake, "seats": ed_seats, "walk": ed_walk,
+             "world": ed_world}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -520,6 +657,9 @@ class Handler(BaseHTTPRequestHandler):
         self._setcookie = (auth == "set")
         if path in ("/api/status", "/status.json"):
             self._json(status() if auth else public_status())
+            return
+        if path == "/api/limezu":
+            self._json(limezu_pack())
             return
         if path == "/api/assets":
             assets, _ = _room()
