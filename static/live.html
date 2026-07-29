@@ -441,6 +441,7 @@ function goto(A, spot, then, now){
   if (!p) { A.state = "react"; A.emote = 0; A.seat = null; release(A);
             A.until = now + 1500; return; }
   A.path = smooth(p); A.pi = 1; A.state = "walk"; A.then = then; A.spot = spot;
+  A.prog = null;
 }
 
 const ONLY = new URLSearchParams(location.search).get("only");
@@ -523,6 +524,14 @@ function step(A, dt, now){
              face(A, facing(dx, dy), now); move = 0; }
     }
     if (!A.path || A.pi >= A.path.length) arrive(A, now);
+    // A walker is the one person in the room with no clock of its own: it walks
+    // until it arrives. So a knot of people in a gangway used to hold until
+    // somebody else's timer went off. If barely any ground has been covered in
+    // the last few seconds, the errand is given up and a new one chosen, which
+    // from the outside is him giving up and going somewhere else.
+    else if (!A.prog || Math.hypot(A.x - A.prog.x, A.y - A.prog.y) > 12)
+      A.prog = {x: A.x, y: A.y, at: now};
+    else if (now - A.prog.at > 3000) { A.prog = null; plan(A, now); return; }
     A.row = ROW[A.dir]; A.t += dt;
     // A row does not always hold eight frames — the bake drops the ones drawn as
     // a different build — so a full stride is however many it has, or the feet
@@ -548,27 +557,34 @@ function step(A, dt, now){
 }
 
 /* Nobody walks through anybody either. Two people who end up standing in the
-   same place are eased apart, half the overlap each, and only onto floor they
-   could have walked to anyway. Nothing is done to either path, so whoever was
-   on his way somewhere still gets there - he goes round. The gap is measured on
-   the floor rather than on the screen: a step sideways covers two and a half
-   times the ground a step up or down does, so a plain distance in pixels would
-   have them elbowing each other from across the room. */
-const NEAR = 30, SQUASH = 2.5;
+   same place lean away from each other, onto floor they could have walked to
+   anyway. The gap is measured on the floor rather than on the screen: a step
+   sideways covers two and a half times the ground a step up or down does, so a
+   plain distance in pixels would have them elbowing each other from across the
+   room.
+
+   Leaning away is a speed, and a slower one than walking. Setting the gap
+   outright instead - which is what this did at first - makes it a wall: a man
+   walking at somebody standing in a gangway is shoved back exactly as far as he
+   steps forward, every frame, for as long as the other one stays put, and the
+   two of them stand there for good. At two thirds of a walking pace he loses
+   ground while they are shoulder to shoulder and gains it again once he is
+   past, which is what squeezing by looks like. */
+const NEAR = 30, SQUASH = 2.5, LEAN = 60;
 
 function nudge(A, dx, dy){
   const x = A.x + dx, y = A.y + dy;
   if (free(Math.floor(x / CELL), Math.floor(y / CELL))) { A.x = x; A.y = y; }
 }
 
-function jostle(crew){
+function jostle(crew, dt){
   for (let i = 0; i < crew.length; i++)
     for (let j = i + 1; j < crew.length; j++) {
       const a = crew[i], b = crew[j];
       if (a.seat || b.seat) continue;
       const dx = b.x - a.x, dy = (b.y - a.y) * SQUASH, d = Math.hypot(dx, dy);
       if (d >= NEAR || d < 0.01) continue;
-      const p = (NEAR - d) / 2 / d;
+      const p = Math.min((NEAR - d) / 2, LEAN * dt) / d;
       nudge(a, -dx * p, -dy * p / SQUASH);
       nudge(b, dx * p, dy * p / SQUASH);
     }
@@ -982,7 +998,7 @@ function frame(now){
   if (!frame.last) frame.last = now;
   const dt = Math.min(0.05, now - frame.last); frame.last = now;
   for (const A of CREW) step(A, dt, now * 1000);
-  jostle(CREW);
+  jostle(CREW, dt);
 
   cx.clearRect(0, 0, W, H);
   cx.drawImage(IMG.bg, 0, 0);
